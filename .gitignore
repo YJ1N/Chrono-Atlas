@@ -1,0 +1,48 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Claude Code 로컬 도구
+# .claude/skills/ 는 anthropics/skills 에서 가져온 타사 도구(Apache 2.0)이며
+# 이 프로젝트의 코드가 아니다. 로컬 개발 편의용이므로 저장소에 넣지 않는다.
+# 필요하면 다시 받는다: https://github.com/anthropics/skills
+.claude/skills/
+.claude/settings.local.json
