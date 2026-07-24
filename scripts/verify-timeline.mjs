@@ -439,6 +439,107 @@ check(
   liveRegion?.trim().slice(0, 40),
 );
 
+// ── 11. 포커스 관리 (Phase 4) ───────────────────────────────────
+/**
+ * 여기 있는 것들은 전부 **실제로 실패했던 것**이다.
+ * 프로그램으로 `.focus()` 를 부르면 통과하지만 진짜 Tab 을 누르면 드러난다.
+ */
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+
+const describeFocus = (target = page) =>
+  target.evaluate(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body) return "body";
+    const role = el.getAttribute("role");
+    // Next.js 개발 오버레이는 프로덕션에 없다. 탭 순서 판정에서 제외한다.
+    if (el.tagName.toLowerCase() === "nextjs-portal" || el.closest("nextjs-portal")) {
+      return "devtools";
+    }
+    return `${el.tagName.toLowerCase()}${role ? `[${role}]` : ""}`;
+  });
+
+/**
+ * 탭 순서는 **새로 연 페이지**에서 잰다.
+ *
+ * `blur()` 로 초기화하려 했더니 Chromium 이 순회 시작점을 유지해서 봉우리
+ * 한가운데서 Tab 이 시작됐다. 실제 사용자는 페이지를 열고 Tab 을 누르므로
+ * 그 상황을 그대로 만든다.
+ */
+const fresh = await browser.newPage({
+  viewport: { width: 1440, height: 900 },
+  colorScheme: "dark",
+});
+await fresh.goto(URL, { waitUntil: "networkidle" });
+await fresh.keyboard.press("Escape");
+await fresh.waitForTimeout(800);
+
+const tabOrder = [];
+for (let i = 0; i < 12; i += 1) {
+  await fresh.keyboard.press("Tab");
+  const where = await describeFocus(fresh);
+  if (where === "devtools" || where === "body") continue;
+  tabOrder.push(where);
+  if (where === "g[button]") break;
+}
+/**
+ * 이름이 보이는 봉우리는 전부 탭 정지다(최대 40개). 우회로가 없으면
+ * 키보드 사용자가 헤더 컨트롤에 닿기까지 40번을 눌러야 한다 — 실측 26회였다.
+ * 진짜 불변식은 "몇 번" 이 아니라 **순서**다.
+ */
+const firstPeak = tabOrder.indexOf("g[button]");
+const controlsBefore = (firstPeak === -1 ? tabOrder : tabOrder.slice(0, firstPeak))
+  .filter((d) => d === "a" || d === "button").length;
+check(
+  "건너뛰기 링크와 컨트롤이 봉우리보다 앞에 온다 (WCAG 2.4.1)",
+  controlsBefore >= 3,
+  tabOrder.join(" → "),
+);
+await fresh.close();
+
+await page.evaluate(() => {
+  document.querySelector("svg g[data-start][tabindex]")?.focus();
+});
+await page.keyboard.press("Enter");
+await page.waitForTimeout(450);
+check(
+  "상세 패널이 열리면 포커스가 따라간다",
+  (await describeFocus()) === "aside[region]",
+  await describeFocus(),
+);
+
+await page.keyboard.press("Escape");
+await page.waitForTimeout(350);
+check(
+  "패널을 닫으면 포커스가 숨겨진 패널에 남지 않는다",
+  (await describeFocus()) !== "aside[region]",
+  await describeFocus(),
+);
+
+await page.keyboard.press("Meta+k");
+await page.waitForTimeout(500);
+await page.keyboard.press("Tab");
+await page.waitForTimeout(120);
+check(
+  "팔레트가 포커스를 가둔다",
+  await page.evaluate(
+    () => !!document.activeElement?.closest('[role="dialog"]'),
+  ),
+);
+
+/** Escape 를 입력창에만 달았더니 결과로 Tab 한 뒤에는 나올 길이 없었다. */
+await page.keyboard.press("Escape");
+await page.waitForTimeout(350);
+check(
+  "결과 목록에서도 Escape 로 닫힌다",
+  !(await page.getByTestId("command-palette").isVisible()),
+);
+check(
+  "팔레트를 닫으면 포커스가 지형으로 돌아온다",
+  (await describeFocus()) !== "body",
+  await describeFocus(),
+);
+
 check("Phase 4 조작 중 콘솔 에러 없음", consoleErrors.length === 0,
   consoleErrors.slice(0, 2).join(" | "));
 

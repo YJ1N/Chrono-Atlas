@@ -428,6 +428,58 @@ export function Atlas({
     <div className="relative h-full w-full overflow-hidden bg-background text-foreground">
       <EraBackdrop controller={controller} />
 
+      {/*
+        ── 봉우리 40개를 지나지 않고 빠져나갈 길
+        이름이 보이는 봉우리는 전부 탭 정지가 된다(그래야 키보드가 닿는 곳과
+        보이는 곳이 일치한다). 대가로 지형 안에서 다음 컨트롤까지 최대 40번을
+        눌러야 한다 — 실측 26회였다. WCAG 2.4.1 이 요구하는 우회로를 둔다.
+        평소엔 보이지 않고 포커스를 받을 때만 나타난다.
+      */}
+      <a
+        href="#atlas-after-peaks"
+        className="sr-only z-40 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded-full focus:border focus:border-border focus:bg-surface focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-foreground"
+      >
+        사건 목록 건너뛰기
+      </a>
+
+      {/* 크롬은 최소한만. 화면의 주인공은 시간이다 */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-5 py-4">
+        <span className="text-[13px] font-medium tracking-tight text-foreground/70">
+          ChronoAtlas
+        </span>
+        <span className="text-[11px] text-muted/70">{domain.label}</span>
+        <div className="pointer-events-auto ml-auto flex items-center gap-2">
+          <TierBadge controller={controller} />
+          {loadSearchIndex && (
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-keyshortcuts="Meta+K Control+K"
+              className="flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
+            >
+              검색
+              <kbd className="tabular rounded border border-border/50 px-1 text-[10px] text-muted/70">
+                ⌘K
+              </kbd>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={resetView}
+            className="rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
+          >
+            인류사
+          </button>
+          <button
+            type="button"
+            onClick={showAll}
+            className="rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
+          >
+            138억 년
+          </button>
+        </div>
+      </header>
+
       <div
         ref={setPlotEl}
         tabIndex={0}
@@ -478,43 +530,11 @@ export function Atlas({
           : ""}
       </p>
 
-      {/* 크롬은 최소한만. 화면의 주인공은 시간이다 */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-5 py-4">
-        <span className="text-[13px] font-medium tracking-tight text-foreground/70">
-          ChronoAtlas
-        </span>
-        <span className="text-[11px] text-muted/70">{domain.label}</span>
-        <div className="pointer-events-auto ml-auto flex items-center gap-2">
-          <TierBadge controller={controller} />
-          {loadSearchIndex && (
-            <button
-              type="button"
-              onClick={() => setPaletteOpen(true)}
-              aria-keyshortcuts="Meta+K Control+K"
-              className="flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
-            >
-              검색
-              <kbd className="tabular rounded border border-border/50 px-1 text-[10px] text-muted/70">
-                ⌘K
-              </kbd>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={resetView}
-            className="rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
-          >
-            인류사
-          </button>
-          <button
-            type="button"
-            onClick={showAll}
-            className="rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
-          >
-            138억 년
-          </button>
-        </div>
-      </header>
+
+      {/* 건너뛰기 링크의 도착점 */}
+      <div id="atlas-after-peaks" tabIndex={-1} className="sr-only">
+        사건 목록 끝
+      </div>
 
       {/* 딥링크로 들어왔는데 인트로가 도는 것은 결함이다. */}
       {size.width > 0 && !hadUrlState && (
@@ -526,6 +546,7 @@ export function Atlas({
           onClose={() => setPaletteOpen(false)}
           loadIndex={loadSearchIndex}
           onNavigate={navigateToHit}
+          fallbackFocus={plotEl}
         />
       )}
 
@@ -534,6 +555,7 @@ export function Atlas({
         related={related}
         onClose={() => setSelectedId(null)}
         onNavigate={focusItem}
+        fallbackFocus={plotEl}
       />
 
       {domain.landmarks && (

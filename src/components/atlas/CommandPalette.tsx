@@ -23,8 +23,11 @@ export function CommandPalette({
   onClose,
   loadIndex,
   onNavigate,
+  fallbackFocus,
 }: {
   onClose: () => void;
+  /** 열기 전 위치가 더 이상 유효하지 않을 때 포커스를 받을 곳. */
+  fallbackFocus?: HTMLElement | null;
   loadIndex: () => Promise<readonly SearchRecord[]>;
   onNavigate: (hit: SearchHit) => void;
 }) {
@@ -34,6 +37,9 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /** 열기 전에 포커스가 있던 곳. 닫으면 여기로 돌려준다. */
+  const returnFocusTo = useRef<HTMLElement | null>(null);
 
   /**
    * 마운트될 때 받는다. 실패해도 앱은 계속 돈다.
@@ -56,6 +62,81 @@ export function CommandPalette({
     };
   }, [loadIndex]);
 
+  /**
+   * 포커스를 다이얼로그 안에 가둔다.
+   *
+   * `aria-modal="true"` 는 스크린리더에게 "밖은 없다" 고 **말할** 뿐,
+   * Tab 을 막지는 않는다. 가두지 않으면 결과 목록 끝에서 Tab 을 눌렀을 때
+   * 뒤에 있는 지형의 봉우리 40개로 빠져나간다 — 열려 있는 모달 뒤로.
+   *
+   * 닫을 때는 열기 전 위치로 되돌린다. 그러지 않으면 포커스가 사라진
+   * 결과 버튼에 남아 사실상 body 로 떨어진다 — 실측으로 확인한 결함이다.
+   */
+  useEffect(() => {
+    const active = document.activeElement;
+    // 숨겨진 요소로 돌려보내면 포커스가 사실상 사라진다.
+    const usable =
+      active instanceof HTMLElement && !active.closest('[aria-hidden="true"]')
+        ? active
+        : null;
+    returnFocusTo.current = usable;
+
+    return () => {
+      const target = returnFocusTo.current;
+      if (target?.isConnected) target.focus();
+      else fallbackFocus?.focus();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Escape 는 문서 수준에서 듣는다.
+   *
+   * 처음에는 입력창의 `onKeyDown` 에만 달았는데, 결과 목록으로 Tab 한 뒤에는
+   * Escape 가 아예 먹지 않았다 — 모달을 열고 아래로 내려가면 키보드로 나올
+   * 길이 없어진다. 실측으로 확인한 결함이다.
+   */
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onEscape, true);
+    return () => document.removeEventListener("keydown", onEscape, true);
+  }, [onClose]);
+
+  useEffect(() => {
+    const onTab = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'input, button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!root.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onTab, true);
+    return () => document.removeEventListener("keydown", onTab, true);
+  }, []);
+
   const hits = useMemo(
     () => (records ? searchItems(records, query, 24) : []),
     [records, query],
@@ -76,9 +157,6 @@ export function CommandPalette({
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       switch (event.key) {
-        case "Escape":
-          onClose();
-          break;
         case "ArrowDown":
           setActive((i) => Math.min(i + 1, hits.length - 1));
           break;
@@ -93,7 +171,7 @@ export function CommandPalette({
       }
       event.preventDefault();
     },
-    [hits, clampedActive, choose, onClose],
+    [hits, clampedActive, choose],
   );
 
   // 키보드로 내려갈 때 화면 밖으로 나가지 않게 한다.
@@ -110,6 +188,7 @@ export function CommandPalette({
       data-testid="command-palette"
     >
       <div
+        ref={dialogRef}
         className="w-[min(560px,92vw)] overflow-hidden rounded-xl border border-border/70 bg-surface/95 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
         role="dialog"

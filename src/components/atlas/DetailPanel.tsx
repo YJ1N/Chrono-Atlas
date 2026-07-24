@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { formatDuration, formatTimePoint } from "@/engine/time/TimePoint";
 import type { TimelineItem } from "@/engine/types/timeline";
@@ -26,12 +26,24 @@ export function DetailPanel({
   related,
   onClose,
   onNavigate,
+  fallbackFocus,
 }: {
   item: TimelineItem | null;
   related: TimelineItem[];
   onClose: () => void;
   onNavigate: (item: TimelineItem) => void;
+  /**
+   * 돌아갈 봉우리가 사라졌을 때 포커스를 받을 곳.
+   *
+   * 선택하면 뷰포트가 움직이고 LOD 가 다시 돌아 그 봉우리의 DOM 노드가
+   * 교체된다. 즉 "원래 자리" 가 이미 없는 것이 예외가 아니라 **보통**이다.
+   */
+  fallbackFocus?: HTMLElement | null;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+  /** 패널을 열기 직전에 포커스가 있던 곳 — 보통 그 봉우리다. */
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!item) return;
     const onKey = (event: KeyboardEvent) => {
@@ -41,12 +53,62 @@ export function DetailPanel({
     return () => globalThis.removeEventListener("keydown", onKey);
   }, [item, onClose]);
 
+  /**
+   * 열리면 포커스를 패널로 옮긴다.
+   *
+   * 이것이 없으면 봉우리에서 Enter 를 눌러도 포커스는 봉우리에 남고,
+   * 스크린리더 사용자에게는 **아무 일도 일어나지 않은 것과 같다.**
+   * 실측으로 확인한 결함이다.
+   */
+  useEffect(() => {
+    if (!item) {
+      /**
+       * 닫히면 원래 자리로 돌려준다.
+       *
+       * 이게 없으면 포커스가 **숨겨진 패널**에 남는다. 다음에 Tab 을 누르면
+       * 문서 처음부터 다시 시작하고, 그 상태에서 모달을 열면 돌아갈 곳이
+       * 이미 유효하지 않다. 실측으로 확인한 결함이다.
+       */
+      /**
+       * 돌려줄 곳이 유효하지 않을 수 있다 — 선택하면 뷰포트가 움직이고
+       * LOD 가 다시 돌아 그 봉우리의 DOM 노드가 교체되기 때문이다. 그래서
+       * 복원 성공 여부에 기대지 않고, **닫히는 패널이 포커스를 쥐고 있지
+       * 않다**는 것부터 무조건 보장한다. 조건부 복원에만 의존했을 때
+       * 브라우저 검증이 이 구멍을 잡아냈다.
+       */
+      const panel = panelRef.current;
+      const target = returnFocusTo.current;
+      returnFocusTo.current = null;
+
+      if (target?.isConnected) target.focus();
+      else fallbackFocus?.focus();
+
+      if (panel && panel.contains(document.activeElement)) {
+        panel.blur();
+        fallbackFocus?.focus();
+      }
+      return;
+    }
+    if (!panelRef.current?.contains(document.activeElement)) {
+      returnFocusTo.current =
+        document.activeElement instanceof HTMLElement ||
+        document.activeElement instanceof SVGElement
+          ? (document.activeElement as HTMLElement)
+          : null;
+    }
+    panelRef.current?.focus();
+  }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const open = item !== null;
   const duration = item ? item.span.end - item.span.start : 0;
 
   return (
     <aside
+      ref={panelRef}
       aria-hidden={!open}
+      tabIndex={-1}
+      role="region"
+      aria-label={item ? `${item.title} 상세` : "사건 상세"}
       data-testid="detail-panel"
       className={`absolute inset-y-0 right-0 z-20 flex w-[min(420px,92vw)] flex-col border-l border-border/70 bg-surface/92 backdrop-blur-xl transition-transform duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
         open ? "translate-x-0" : "pointer-events-none translate-x-full"
