@@ -103,7 +103,7 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 1. LOD 로 DOM 노드 상한 고정 (마크 ~300 + 축 ~40)
 2. 뷰포트 상태를 React 밖에 유지
 3. 팬 중 transform-only
-4. `IntervalIndex` 로 범위 질의 O(log n + k), `queryInto` 로 프레임당 할당 0
+4. `IntervalIndex` 로 범위 질의 O(log n + k). `queryInto` 가 호출자 배열을 재사용해 프레임마다 새 배열을 만들지 않는다
 5. 시간 버킷 단위 청크 lazy load
 6. 라벨 충돌 계산을 span 버킷 기준으로 메모이제이션
 
@@ -118,4 +118,4 @@ npm run test:watch  # 시간 커널 개발 중
 
 - **시간 커널** — `vitest`. 138억 년~하루 전 구간 왕복 변환, 눈금 불변식, 범위 질의를 참조 구현과 대조.
 - **엔진 경계** — ESLint. 위반 시 `npm run lint` 실패.
-- **성능 실측** — `.claude/skills/webapp-testing` (Playwright). Phase 2 부터 팬/줌 프레임 측정.
+- **성능 실측** — Playwright 로 팬/줌 프레임 측정 (Phase 2 부터). 로컬 도구로 [anthropics/skills](https://github.com/anthropics/skills) 의 `webapp-testing` 스킬을 쓰며, 타사 도구이므로 저장소에는 포함하지 않는다(`.gitignore`).

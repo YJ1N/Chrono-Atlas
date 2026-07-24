@@ -42,6 +42,33 @@ Future domains:
 
 ---
 
+# Current State
+
+진행상황은 `PROJECT.md`, 결정 근거는 `DECISIONS.md` 에 있다.
+**작업 시작 전 이 둘을 먼저 읽는다.**
+
+상태값(Phase 번호, 테스트 개수 등)은 이 파일에 복사하지 않는다 — 낡기 때문이다.
+여기에는 낡지 않는 것만 둔다.
+
+## 절대 어기지 말 것
+
+- **`engine/` 에서 `Date` 를 쓰지 않는다.**
+  표현 한계가 ±271,821년이라 138억 년을 담지 못한다.
+  시간은 `TimePoint`(= `number`, 천문학적 연도)로만 다룬다. (ADR-001)
+
+- **`engine/` 은 `domains/`·`components/`·`stores/`·`app/` 을 import 하지 않는다.**
+  의존은 한 방향으로만 흐른다. `engine/` 이 도메인을 아는 순간
+  "Time Engine" 이라는 주장은 무너진다. (ADR-003)
+
+둘 다 ESLint 로 강제되므로 어기면 `npm run lint` 가 실패한다.
+규칙을 우회하지 말고 설계를 고친다.
+
+## 완료의 정의
+
+`npm run verify` (lint + typecheck + test) 가 통과해야 작업이 끝난 것이다.
+
+---
+
 # Core Philosophy
 
 - Architecture First
