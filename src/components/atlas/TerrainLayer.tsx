@@ -8,7 +8,7 @@ import {
   fieldToPolyline,
 } from "@/engine/field/DensityField";
 import { blendedRecipe } from "@/engine/render/tiers";
-import { viewportRange } from "@/engine/time/TimeScale";
+import { createTimeScale, viewportRange } from "@/engine/time/TimeScale";
 import type { ViewportController } from "@/engine/viewport/ViewportController";
 import type { TimelineItem } from "@/engine/types/timeline";
 
@@ -32,12 +32,15 @@ export function TerrainLayer({
   height,
   /** 필드 계산에 쓸 샘플 수. 화면 폭보다 작아도 보간되므로 충분하다. */
   resolution = 256,
+  /** 이 시점 이후로 지형을 흐린다. 데이터의 끝(현재)을 절벽이 아니게 만든다. */
+  fadeAfter,
 }: {
   controller: ViewportController;
   index: IntervalIndex<TimelineItem>;
   width: number;
   height: number;
   resolution?: number;
+  fadeAfter?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const polylineRef = useRef<Float64Array>(new Float64Array(0));
@@ -95,8 +98,29 @@ export function TerrainLayer({
     ctx.lineWidth = 1.25;
     ctx.stroke();
 
+    /**
+     * 데이터의 끝을 절벽이 아니게 만든다.
+     *
+     * 2026년 이후에는 사건이 없으므로 지형이 수직으로 뚝 떨어진다.
+     * 의미상 맞지만 렌더링 결함처럼 보인다. 현재 지점부터 오른쪽으로
+     * 서서히 지우면 "여기부터는 아직 없다" 로 읽힌다.
+     */
+    if (fadeAfter !== undefined) {
+      const edge = createTimeScale(viewport, width).toPixel(fadeAfter);
+      if (edge < width) {
+        const from = Math.max(0, edge);
+        const mask = ctx.createLinearGradient(from, 0, width, 0);
+        mask.addColorStop(0, "rgba(0,0,0,0)");
+        mask.addColorStop(1, "rgba(0,0,0,1)");
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = mask;
+        ctx.fillRect(from, 0, width - from, height);
+        ctx.globalCompositeOperation = "source-over";
+      }
+    }
+
     ctx.globalAlpha = 1;
-  }, [controller, index, width, height, resolution]);
+  }, [controller, index, width, height, resolution, fadeAfter]);
 
   /** 캔버스 해상도는 DPR 을 반영해야 능선이 흐려지지 않는다. */
   useLayoutEffect(() => {

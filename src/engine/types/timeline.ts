@@ -179,6 +179,21 @@ export interface Domain {
   categories: Category[];
   defaultViewport: Viewport;
   chunks: ChunkManifest[];
+  /**
+   * 수평선에 새길 고정 지형지물 — 시간의 해안선.
+   *
+   * Maps 를 Maps 로 만드는 것의 절반은 이탈리아 장화와 오대호다.
+   * 어느 줌에서도 보이는 형상이 있어야 "내가 어디 있는지" 를 안다.
+   * 도메인마다 다르므로 값은 도메인이 준다.
+   */
+  landmarks?: Landmark[];
+}
+
+/** 수평선 위의 고정 참조점. */
+export interface Landmark {
+  id: string;
+  label: string;
+  time: TimePoint;
 }
 
 // ─────────────────────────────────────────────────────────────

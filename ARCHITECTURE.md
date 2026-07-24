@@ -43,6 +43,12 @@ src/
       TimePoint.ts       ✅       # 연도 ↔ 달력 ↔ 표시 변환, 정밀도, 포맷팅
       TimeScale.ts       ✅       # time ↔ pixel 매핑, 줌/팬 대수
       ticks.ts           ✅       # 17자릿수 대응 적응형 눈금
+      significance.ts    ✅       # 줌에 결합된 중요도 하한 = Y축
+      projection.ts      ✅       # 로그 시간 투영 (수평선 전용)
+    field/
+      DensityField.ts    ✅       # 고원+봉우리 두 채널의 밀도 필드
+    render/
+      tiers.ts           ✅       # cosmic→moment 5단 + 크로스페이드
     index/
       IntervalIndex.ts   ✅       # 범위 질의 O(log n + k)
       lod.ts             ✅       # (뷰포트, 픽셀폭) → 표시할 아이템 선별
@@ -50,15 +56,15 @@ src/
     viewport/
       ViewportController.ts ✅    # {center, span} 명령형 소유 + rAF 이징
       useViewport.ts     ✅       # React 구독 바인딩
+      inertia.ts         ✅       # 던지기 관성 · 러버밴딩 · 스프링
       urlState.ts        ⬜ P4    # 뷰포트 ↔ URL 직렬화
-    render/
-      (Canvas 렌더러는 Phase 6 탈출구 — 지금은 필요 없다)
     types/
       timeline.ts        ✅       # TimelineItem, Lane, Category, Domain, Viewport
   domains/
     history/             ✅       # manifest · lanes · categories · seed(195건)
                                 # Phase 3 의 ETL 이 seed 를 대체한다
-  components/timeline/   ✅       # Timeline · TimeAxis · useTimelineInput
+  components/atlas/      ✅       # Atlas · TerrainLayer(Canvas) · PeakLayer
+                                # EraLayer · Horizon · DetailPanel · Overlays
   stores/                ⬜ P4    # Zustand — 저빈도 상태만
   app/                   ✅       # Next.js App Router
 scripts/etl/             ⬜ P3
@@ -81,13 +87,18 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 
 ## 렌더링 전략
 
+공간 모델: **X = 시간, Y = 중요도(연속).** 화면은 풍경이다.
+
 | 대상 | 방식 | 근거 |
 |---|---|---|
-| 시간축·눈금 | SVG | 텍스트 선명도 |
-| 시대 리본 (`layer: context`) | SVG | 수십 개 수준 |
-| 이벤트 마크 (`layer: primary`) | SVG + LOD 상한 ~300 | ADR-010 |
-| 밀도 미니맵 | Canvas | 1회 렌더 후 재사용 |
-| Canvas 마크 레이어 | **만들지 않음** | Phase 6 탈출구 |
+| 지형 (밀도 필드) | **Canvas** | 폭만큼의 폴리라인 하나. SVG 면 프레임마다 좌표 문자열을 다시 파싱한다 |
+| 이벤트 봉우리 | SVG + LOD 상한 ~300 | ADR-010 |
+| 시대 밴드 (`layer: context`) | SVG, cosmic/epochal 에서만 | 티어 가중치로 크로스페이드 |
+| 로그 수평선 | DOM | 요소가 10여 개뿐 |
+
+**티어별 표현의 변태**가 이 렌더링의 핵심이다. 넓은 쪽에서는 지형이 주인공이고
+개별 사건이 존재하지 않으며, 좁은 쪽에서는 지형이 사라지고 사건이 카드가 된다.
+같은 것을 크게 그리는 것은 줌이 아니다 (ADR-012).
 
 **팬·줌 최적화 — 실제 구현:** 마크는 위치만 바뀌고 내용은 그대로이므로 React 를
 거치지 않는다. rAF 안에서 각 마크의 `style.transform` 을 직접 쓴다(수백 개라도

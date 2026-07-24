@@ -44,6 +44,23 @@ const plot = page.locator('[role="application"]');
 const tier = async () => (await page.getByTestId("tier-badge").textContent()) ?? "";
 const peakCount = () => page.locator("svg g[data-start]").count();
 
+/**
+ * 화면에 표시된 사건 중 가장 낮은 중요도.
+ *
+ * ── 왜 개수가 아니라 이것을 재는가
+ * cosmic 은 138억 년을, detail 은 700년을 담는다. 담긴 시간이 다르므로
+ * 개수 비교는 의미가 없다(오히려 줌 인하면 줄어드는 게 정상이다).
+ * "확대하면 사소한 것이 떠오른다" 는 **중요도 하한이 내려간다**는 뜻이고,
+ * 그것이 이 제품이 Maps 를 닮았다고 주장하는 근거다.
+ */
+const minSignificance = () =>
+  page.evaluate(() => {
+    const values = [...document.querySelectorAll("svg g[data-sig]")].map((g) =>
+      Number(g.dataset.sig),
+    );
+    return values.length ? Math.min(...values) : 1;
+  });
+
 /** 지형 캔버스에 실제로 픽셀이 칠해졌는지 — "빈 화면" 회귀 방지. */
 const terrainCoverage = () =>
   page.evaluate(() => {
@@ -77,7 +94,9 @@ await page.waitForTimeout(1700);
 check("줌 아웃 → cosmic 티어", (await tier()).startsWith("cosmic"), await tier());
 
 const peaksCosmic = await peakCount();
+const sigCosmic = await minSignificance();
 check("cosmic 에서 봉우리가 크게 줄어든다", peaksCosmic < peaks0, `${peaks0} → ${peaksCosmic}`);
+check("cosmic 은 최상위 사건만 남긴다", sigCosmic >= 0.8, `최저 중요도 ${sigCosmic.toFixed(2)}`);
 check("cosmic 에서도 화면이 비지 않는다", (await terrainCoverage()) > 0.15);
 await page.screenshot({ path: `${OUT}/r2-cosmic.png` });
 
@@ -97,8 +116,12 @@ check(
   /detail|moment/.test(detailTier),
   detailTier,
 );
-const peaksDetail = await peakCount();
-check("줌 인하면 사소한 사건이 떠오른다", peaksDetail > peaksCosmic, `${peaksCosmic} → ${peaksDetail}`);
+const sigDetail = await minSignificance();
+check(
+  "줌 인하면 사소한 사건이 떠오른다 (중요도 하한이 내려간다)",
+  sigDetail < sigCosmic - 0.2,
+  `최저 중요도 ${sigCosmic.toFixed(2)} → ${sigDetail.toFixed(2)}`,
+);
 await page.screenshot({ path: `${OUT}/r3-detail.png` });
 
 // ── 3. 물리 — 던지면 계속 흐르는가 ─────────────────────────────
@@ -146,7 +169,9 @@ const target = await page.evaluate(() => {
 check("화면 안에 클릭 가능한 봉우리 존재", target !== null);
 if (target) await page.mouse.click(target.x, target.y);
 await page.waitForTimeout(250);
-check("봉우리 클릭 → 상세 표시", await page.locator("aside").isVisible());
+check("봉우리 클릭 → 상세 패널이 열린다", await page.getByTestId("detail-panel").isVisible());
+const chips = await page.locator('[data-testid="detail-panel"] button').count();
+check("패널에 탐험을 잇는 관계 칩이 있다", chips > 1, `${chips - 1}개`);
 await page.screenshot({ path: `${OUT}/r4-selected.png` });
 
 // ── 5. 프레임 실측 ──────────────────────────────────────────────
@@ -199,6 +224,10 @@ check("프레임 드롭 1% 미만", dropRate < 1, `${dropRate.toFixed(1)}%`);
 check("최악 프레임 < 50ms (끊김 없음)", worst < 50, `${worst.toFixed(1)}ms`);
 
 // ── 6. 조작 후 무결성 ───────────────────────────────────────────
+check("수평선이 항상 보인다 (주변시)", await page.getByTestId("horizon").isVisible());
+check("수평선에 현재 위치 띠가 있다", await page.getByTestId("horizon-band").isVisible());
+check("'지금' 마커가 존재한다", (await page.getByTestId("present-marker").count()) === 1);
+check("심원한 시간 주석이 존재한다", (await page.getByTestId("scale-note").count()) === 1);
 check("조작 후에도 지형이 남는다", (await terrainCoverage()) > 0.15);
 check("조작 후에도 봉우리가 남는다", (await peakCount()) > 0);
 check("조작 중 콘솔 에러 없음", consoleErrors.length === 0, consoleErrors.slice(0, 2).join(" | "));

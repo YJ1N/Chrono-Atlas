@@ -10,6 +10,10 @@ import {
 } from "react";
 
 import { CursorReadout } from "./CursorReadout";
+import { DetailPanel } from "./DetailPanel";
+import { EraLayer } from "./EraLayer";
+import { Horizon } from "./Horizon";
+import { EraBackdrop, PresentMarker, ScaleNote } from "./Overlays";
 import { PeakLayer } from "./PeakLayer";
 import { TerrainLayer } from "./TerrainLayer";
 import { useAtlasInput } from "./useAtlasInput";
@@ -17,7 +21,7 @@ import { createItemIndex } from "@/engine/index/IntervalIndex";
 import { estimateLabelWidth } from "@/engine/index/collision";
 import { selectVisible } from "@/engine/index/lod";
 import { blendedRecipe, tierAt } from "@/engine/render/tiers";
-import { UNIVERSE_START, formatTimePoint } from "@/engine/time/TimePoint";
+import { PRESENT_EPOCH, UNIVERSE_START, formatTimePoint } from "@/engine/time/TimePoint";
 import { createTimeScale, viewportForRange } from "@/engine/time/TimeScale";
 import {
   significanceToY,
@@ -31,6 +35,8 @@ const PEAK_SPACING_PX = 26;
 const OVERSCAN_PX = 500;
 /** 라벨 상자의 세로 높이 — 이 안에 들어오면 겹친 것으로 본다. */
 const LABEL_ROW_PX = 22;
+/** 수평선 띠가 차지하는 높이. */
+const HORIZON_PX = 52;
 
 /** LOD 재계산 임계 — 매 프레임 재계산하면 React 렌더가 60fps 로 돌아 의미가 없다. */
 const LOD_SPAN_RATIO = 1.12;
@@ -38,15 +44,16 @@ const LOD_CENTER_DRIFT = 0.12;
 
 interface LodResult {
   peaks: TimelineItem[];
+  eras: TimelineItem[];
   labeledIds: ReadonlySet<string>;
 }
 
-const EMPTY_LOD: LodResult = { peaks: [], labeledIds: new Set() };
+const EMPTY_LOD: LodResult = { peaks: [], eras: [], labeledIds: new Set() };
 
 /**
  * Atlas — 시간 지형의 최상위 조율자.
  *
- * 레인도 축 구분선도 범례도 없다. 화면은 하나의 풍경이고,
+ * 레인도 축 구분선도 범례도 없다. 화면은 하나의 풍경이고
  * X 는 시간, Y 는 중요도다.
  */
 export function Atlas({
@@ -80,7 +87,8 @@ export function Atlas({
     }
     const viewport = controller.getSnapshot();
     const recipe = blendedRecipe(viewport.span);
-    const { floor } = visibleSignificanceRange(viewport.span);
+    const range = visibleSignificanceRange(viewport.span);
+    const scale = createTimeScale(viewport, w);
 
     /**
      * 중요도 하한 아래는 애초에 뽑지 않는다.
@@ -93,17 +101,19 @@ export function Atlas({
       maxItems: 300,
     })
       .map((p) => p.item)
-      .filter((item) => item.significance >= floor);
+      .filter((item) => item.significance >= range.floor);
+
+    const eras = selectVisible(index, viewport, w, {
+      layer: "context",
+      minSpacingPx: 2,
+      overscanPx: OVERSCAN_PX,
+      maxItems: 24,
+    }).map((p) => p.item);
 
     /**
-     * 라벨 선별 — 중요도 순으로 훑으며 **실제로 겹치지 않는 것만** 채택한다.
-     *
-     * 상위 N개를 그냥 자르면 가까이 붙은 두 사건의 이름이 서로를 덮는다.
-     * 봉우리는 Y(중요도)가 서로 달라서 x 만으로 판정하면 과하게 버려지므로,
-     * x·y 두 축의 상자 겹침으로 판정한다.
+     * 라벨 선별 — 중요도 순으로 훑으며 실제로 겹치지 않는 것만 채택한다.
+     * 봉우리는 Y(중요도)가 서로 다르므로 x·y 두 축의 상자 겹침으로 판정한다.
      */
-    const scale = createTimeScale(viewport, w);
-    const range = visibleSignificanceRange(viewport.span);
     const ranked = [...peaks].sort((a, b) =>
       b.significance !== a.significance
         ? b.significance - a.significance
@@ -114,16 +124,16 @@ export function Atlas({
 
     const placedLabels: { x: number; y: number; width: number }[] = [];
     const labeledIds = new Set<string>();
+    const plotHeight = Math.max(1, size.height - HORIZON_PX);
 
     for (const item of ranked) {
       if (labeledIds.size >= recipe.maxLabels) break;
       const x = scale.toPixel(item.span.start);
       if (x < -40 || x > w + 40) continue;
-      const y = significanceToY(item.significance, range, size.height || 1);
+      const y = significanceToY(item.significance, range, plotHeight);
       /**
        * 여유를 둔다. LOD 는 폭이 12% 바뀔 때만 다시 도는데, 그사이 줌으로
-       * 마크 간 상대 간격이 최대 그만큼 좁아진다. 여유가 없으면 재계산
-       * 직전에 라벨이 서로를 덮는다. (팬은 전체가 함께 움직이므로 무관하다.)
+       * 마크 간 상대 간격이 최대 그만큼 좁아진다. (팬은 전체가 함께 움직이므로 무관.)
        */
       const labelWidth = (estimateLabelWidth(item.title, 12) + 26) * 1.2;
 
@@ -139,7 +149,7 @@ export function Atlas({
       labeledIds.add(item.id);
     }
 
-    setLod({ peaks, labeledIds });
+    setLod({ peaks, eras, labeledIds });
     lodViewportRef.current = viewport;
   }, [controller, index, size.height]);
 
@@ -192,22 +202,84 @@ export function Atlas({
 
   useAtlasInput(plotEl, controller);
 
+  /**
+   * 선택은 **전이**다.
+   *
+   * 카드를 띄우는 것으로 끝나면 툴팁이다. 뷰포트가 대상 쪽으로 움직여야
+   * "도착했다" 는 감각이 생기고, 그래야 목적지가 된다.
+   * 이미 충분히 좁으면 폭은 건드리지 않는다 — 클릭할 때마다 확대되면 멀미난다.
+   */
+  const focusItem = useCallback(
+    (item: TimelineItem) => {
+      setSelected(item);
+      const current = controller.getSnapshot();
+      const itemSpan = Math.max(item.span.end - item.span.start, 0);
+      const targetSpan =
+        itemSpan > 0 && itemSpan * 4 < current.span
+          ? Math.max(itemSpan * 4, current.span * 0.45)
+          : current.span;
+      controller.animateTo(
+        {
+          center: (item.span.start + item.span.end) / 2,
+          span: targetSpan,
+        },
+        520,
+      );
+    },
+    [controller],
+  );
+
+  /**
+   * 패널의 "가까운 시대" — 탐험이 연쇄되는 지점.
+   *
+   * ── 중요도만으로 고르면 안 된다
+   * 그러면 고조선을 눌러도 제2차 세계대전이 뜬다. 4,000년 떨어진 사건은
+   * "가까운 시대" 가 아니다. 시간 근접성으로 나눠 가중해야, 누를 때마다
+   * 그 시대 언저리를 배회하게 된다 — 그것이 탐험의 연쇄다.
+   */
+  const related = useMemo(() => {
+    if (!selected) return [];
+    const focus = (selected.span.start + selected.span.end) / 2;
+    const duration = selected.span.end - selected.span.start;
+    const reach = Math.max(duration * 5, Math.abs(focus) * 0.15, 300);
+
+    return index
+      .query(focus - reach, focus + reach)
+      .filter((item) => item.id !== selected.id)
+      .map((item) => {
+        const distance = Math.abs(
+          (item.span.start + item.span.end) / 2 - focus,
+        );
+        return { item, score: item.significance / (1 + distance / reach) };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map((entry) => entry.item);
+  }, [selected, index]);
+
   const showAll = useCallback(() => {
-    controller.animateTo(viewportForRange(UNIVERSE_START, 2026, 0.02), 1100);
+    setSelected(null);
+    controller.animateTo(viewportForRange(UNIVERSE_START, PRESENT_EPOCH, 0.02), 1100);
   }, [controller]);
 
   const resetView = useCallback(() => {
+    setSelected(null);
     controller.animateTo(domain.defaultViewport, 700);
   }, [controller, domain.defaultViewport]);
 
+  const plotHeight = Math.max(1, size.height - HORIZON_PX);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-background text-foreground">
+      <EraBackdrop controller={controller} />
+
       <div
         ref={setPlotEl}
         tabIndex={0}
         role="application"
         aria-label="시간 지형. 드래그로 이동, 휠로 확대·축소."
         className="absolute inset-0 cursor-grab outline-none data-[dragging]:cursor-grabbing"
+        style={{ paddingBottom: HORIZON_PX }}
       >
         {size.width > 0 && (
           <>
@@ -215,24 +287,32 @@ export function Atlas({
               controller={controller}
               index={index}
               width={size.width}
-              height={size.height}
+              height={plotHeight}
+              fadeAfter={PRESENT_EPOCH}
             />
+            <PresentMarker controller={controller} height={plotHeight} />
+            <ScaleNote controller={controller} />
             <CursorReadout controller={controller} target={plotEl} />
+            <EraLayer
+              controller={controller}
+              items={lod.eras}
+              width={size.width}
+            />
             <PeakLayer
               controller={controller}
               items={lod.peaks}
               labeledIds={lod.labeledIds}
               width={size.width}
-              height={size.height}
+              height={plotHeight}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              onSelect={focusItem}
             />
           </>
         )}
       </div>
 
       {/* 크롬은 최소한만. 화면의 주인공은 시간이다 */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 px-5 py-4">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-5 py-4">
         <span className="text-[13px] font-medium tracking-tight text-foreground/70">
           ChronoAtlas
         </span>
@@ -256,25 +336,20 @@ export function Atlas({
         </div>
       </header>
 
-      {selected && (
-        <aside className="absolute bottom-6 left-6 max-w-md rounded-xl border border-border/70 bg-surface/80 p-4 backdrop-blur-md">
-          <div className="tabular text-[32px] font-semibold leading-none tracking-tight">
-            {formatTimePoint(selected.span.start)}
-          </div>
-          <div className="mt-2 text-[17px] font-medium">{selected.title}</div>
-          {selected.summary && (
-            <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted">
-              {selected.summary}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => setSelected(null)}
-            className="mt-3 text-[11px] text-muted hover:text-foreground"
-          >
-            닫기 (Esc)
-          </button>
-        </aside>
+      <DetailPanel
+        item={selected}
+        related={related}
+        onClose={() => setSelected(null)}
+        onNavigate={focusItem}
+      />
+
+      {domain.landmarks && (
+        <Horizon
+          controller={controller}
+          landmarks={domain.landmarks}
+          oldest={UNIVERSE_START}
+          newest={PRESENT_EPOCH}
+        />
       )}
     </div>
   );
@@ -285,8 +360,8 @@ function TierBadge({ controller }: { controller: ViewportController }) {
   const [label, setLabel] = useState("");
   useEffect(() => {
     const update = () => {
-      const span = controller.getSnapshot().span;
-      setLabel(`${tierAt(span)} · ${formatTimePoint(controller.getSnapshot().center)}`);
+      const viewport = controller.getSnapshot();
+      setLabel(`${tierAt(viewport.span)} · ${formatTimePoint(viewport.center)}`);
     };
     update();
     return controller.subscribe(update);
