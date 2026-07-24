@@ -1,5 +1,5 @@
 import { HISTORY_CATEGORIES, HISTORY_LANES } from "./lanes";
-import { HISTORY_SEED } from "./seed";
+import { HISTORY_CHUNKS, HISTORY_OVERVIEW } from "./loader";
 import { UNIVERSE_START } from "@/engine/time/TimePoint";
 import type { Domain, Landmark, TimelineItem } from "@/engine/types/timeline";
 
@@ -9,8 +9,9 @@ import type { Domain, Landmark, TimelineItem } from "@/engine/types/timeline";
  * 새 도메인 추가 = 이런 객체 하나를 추가하는 것. `engine/` 은 이 타입만 알고
  * 그 안의 값은 알지 못한다 (ADR-003).
  *
- * `chunks` 는 비어 있다 — Phase 3 의 ETL 이 정적 JSON 청크를 만들 때 채워진다.
- * 지금은 시드가 번들에 직접 들어간다.
+ * 데이터는 Phase 3 의 Wikidata ETL 산출물이다 (`npm run etl`).
+ * 상위 중요도는 `overview` 로 번들에 들어가고, 나머지는 `chunks` 로
+ * 지연 로드된다 (ADR-015).
  */
 export const HISTORY_DOMAIN: Domain = {
   id: "history",
@@ -24,7 +25,7 @@ export const HISTORY_DOMAIN: Domain = {
     center: 0,
     span: 6000,
   },
-  chunks: [],
+  chunks: HISTORY_CHUNKS,
   get landmarks() {
     return HISTORY_LANDMARKS;
   },
@@ -36,7 +37,12 @@ export const HISTORY_FULL_RANGE = {
   end: 2026,
 };
 
-export const HISTORY_ITEMS: TimelineItem[] = HISTORY_SEED;
+/**
+ * 첫 페인트에 즉시 그려지는 항목.
+ *
+ * 전체가 아니다 — 나머지는 뷰포트에 따라 `loader.ts` 가 가져온다.
+ */
+export const HISTORY_ITEMS: TimelineItem[] = HISTORY_OVERVIEW;
 
 /**
  * 시간의 해안선 — 어느 줌에서도 수평선에 보이는 고정 참조점.

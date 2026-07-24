@@ -5,8 +5,10 @@
 ```
 빌드타임 (로컬 실행, 런타임 API 0개)
 
-  Wikidata SPARQL ──▶ scripts/etl ──▶ public/data/<domain>/*.json  (커밋됨)
-                       fetch → normalize → score → chunk
+  Wikidata SPARQL ──▶ scripts/etl ──┬─▶ src/domains/<id>/data/   overview (번들)
+   + deep-time.ts    normalize      └─▶ public/data/<id>/        detail  (fetch)
+   (큐레이션 시간값)  score·enrich
+                     ·chunk            둘 다 커밋된다 — ADR-015
 
 
 런타임
@@ -61,14 +63,17 @@ src/
     types/
       timeline.ts        ✅       # TimelineItem, Lane, Category, Domain, Viewport
   domains/
-    history/             ✅       # manifest · lanes · categories · seed(195건)
-                                # Phase 3 의 ETL 이 seed 를 대체한다
+    history/             ✅       # manifest · lanes · categories
+      loader.ts          ✅       # overview 번들 + 청크 fetch·캐시 (ADR-015)
+      data/              ✅       # ETL 산출: overview.json · chunks.json
   components/atlas/      ✅       # Atlas · TerrainLayer(Canvas) · PeakLayer
                                 # EraLayer · Horizon · DetailPanel · Overlays
+      ChunkedAtlas.tsx   ✅       # 청크 지연 로딩 껍데기 (도메인 무관)
   stores/                ⬜ P4    # Zustand — 저빈도 상태만
-  app/                   ✅       # Next.js App Router
-scripts/etl/             ⬜ P3
-public/data/             ⬜ P3    # 커밋되는 정적 산출물
+  app/                   ✅       # Next.js App Router — 합성 루트
+scripts/etl/             ✅       # queries · wikitime · normalize · score
+                                # enrich · chunk · report · deep-time
+public/data/             ✅       # 커밋되는 정적 청크
 ```
 
 `✅` 구현 완료 · `⬜ Pn` 해당 Phase 예정
@@ -81,7 +86,7 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 |---|---|---|---|
 | **뷰포트** | `center`, `span` | ref + 명령형 emitter | 60fps |
 | **선택/UI** | 선택 아이템, 패널, 필터 | Zustand | 저빈도 |
-| **데이터** | 로드된 청크 | 모듈 캐시 + `dynamic import` | 희소 |
+| **데이터** | overview(번들) + 로드된 청크 | 모듈 캐시 + `fetch` | 희소 |
 
 **뷰포트를 React state 에 넣으면 프로젝트가 죽는다.** 60fps 로 `setState` 하면 매 프레임 전체 재조정이 일어난다. `ViewportController` 가 값을 소유하고, rAF 루프에서 DOM 을 직접 갱신하거나 명시적으로 구독한 컴포넌트만 갱신한다.
 
@@ -122,7 +127,7 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 2. 뷰포트 상태를 React 밖에 유지
 3. 팬 중 transform-only
 4. `IntervalIndex` 로 범위 질의 O(log n + k). `queryInto` 가 호출자 배열을 재사용해 프레임마다 새 배열을 만들지 않는다
-5. 시간 버킷 단위 청크 lazy load
+5. 청크 lazy load — **항목 수**로 분할하고 시간·중요도 양쪽으로 건다. 시간만으로 걸면 전체 보기에서 모든 청크가 겹쳐 첫 화면에 전부 받는다 (ADR-015)
 6. 라벨 충돌 계산을 span 버킷 기준으로 메모이제이션
 
 목표: 최초 인터랙션 가능 < 1.5s, 팬/줌 프레임 < 16ms (MacBook Air 기준)

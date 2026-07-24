@@ -103,26 +103,51 @@ Domain    { id, label, lanes, categories, defaultViewport, chunks, landmarks? }
 
 ---
 
-## 데이터 파이프라인 (Phase 3)
+## 데이터 파이프라인 (Phase 3 — 구현 완료)
 
 ```
-Wikidata SPARQL ──▶ fetch ──▶ normalize ──▶ score ──▶ chunk ──▶ public/data/history/
+                    ┌─ deep-time.ts (큐레이션한 시간값 + Q-id)
+                    │
+Wikidata SPARQL ────┴──▶ normalize ──▶ score ──▶ enrich ──▶ chunk ──┬─▶ src/domains/history/data/  (overview, 번들)
+   (소스 16개)           dedup·달력     전역     언어·링크           └─▶ public/data/history/        (detail, fetch)
+                         ·정밀도       로그정규화
 ```
 
-빌드타임 로컬 실행이며 산출물을 커밋한다. **런타임 API 는 0개다.**
+`npm run etl` 로 로컬에서 수동 실행하고 산출물을 커밋한다. **런타임 API 는 0개다** (ADR-007, ADR-015).
+`npm run etl:probe` 는 각 쿼리가 WDQS 60초 제한을 통과하는지만 빠르게 점검한다.
 
-`normalize` 단계는 검증 리포트를 출력한다: 날짜 파싱 실패율, `significance` 분포, 레인별 건수. 실데이터 품질 문제를 조용히 통과시키지 않기 위해서다.
+검증 리포트는 [`scripts/etl/REPORT.md`](scripts/etl/REPORT.md) 에 매 실행마다 생성된다: 소스별 수율, 날짜 파싱 실패율, 원시 정밀도 분포, `significance` 히스토그램, **언어별 편향**, 카테고리·시대별 밀도, 청크 목록. 실데이터 품질 문제를 조용히 통과시키지 않기 위해서다.
+
+### 이 파이프라인이 실제로 부딪힌 것들
+
+실측으로 확인했고, 전부 코드와 테스트에 고정되어 있다.
+
+| 발견 | 대응 |
+|---|---|
+| Wikidata 연도는 **천문학적 연도 번호**다 (`-0479` = 기원전 480년, 우리 `TimePoint` 와 동일) | 오프셋 보정을 넣지 않는다. 넣으면 전 구간이 1년씩 어긋난다 — 테스트로 고정 |
+| 같은 항목이 정밀도가 다른 여러 주장으로 중복 반환된다 | `wikibase:BestRank` + 정밀도 기준 dedup. 안 하면 밀도가 부풀려진다 |
+| 1582년 이전 날짜는 **율리우스력**으로 온다 | 변환하지 않고 건수만 리포트에 센다 (ADR-005) |
+| 거친 정밀도도 `01-01` 로 자리를 채워 돌려준다 | 연 이하 정밀도일 때만 월·일을 반영. 아니면 "17세기" 가 "1601년 1월 1일" 이 된다 |
+| 우주비행은 `P585` 가 아니라 `P619`(발사일), 문학은 `P571` 이 아니라 `P577`(출판일) | 소스별로 시간 속성을 다르게 지정 |
+| 넓은 클래스(`Q41176` 건물 등)는 스캔만으로 60초 제한을 넘는다 | 좁은 클래스로 대체. 구간 쿼리는 시점 쿼리보다 훨씬 비싸다 |
+| 언어별 sitelink 를 본 쿼리에 `OPTIONAL` 로 붙이면 90초 초과 | 선별 후 `VALUES` 배치로 분리 — 90초 → 1초 |
+
+### 심원한 시간은 왜 큐레이션인가
+
+Wikidata 는 지질시대(기·세·대)는 기계가독 날짜로 잘 주지만, 빅뱅·최초의 별·생명의 기원 같은 **우주론·진화사 사건**에는 시점 속성이 거의 없다. 그 구간을 비우면 cosmic 티어의 지형이 평평해지고, "138억 년을 탐험한다" 는 주장이 빈 화면이 된다.
+
+[`scripts/etl/deep-time.ts`](scripts/etl/deep-time.ts) 가 이 구간을 메운다. **손으로 적는 것은 시간값과 Q-id 뿐**이며, 제목·요약·`significance` 는 다른 수천 건과 똑같이 Wikidata 에서 온다. 중요도를 손으로 정하면 Y축의 일관성이 깨지기 때문이다. 각 항목은 시간값의 근거(`basis`)를 함께 기록한다.
 
 ### 출처와 라이선스
 
 | 출처 | 라이선스 | 용도 | 주의 |
 |---|---|---|---|
-| Wikidata | CC0 | 주 데이터 (시점, 분류, sitelink) | 날짜 품질 불균일 |
-| Wikipedia REST summary | **CC BY-SA** | 요약문 | 출처 표기 + 원문 링크 **필수** |
+| Wikidata (라벨·설명·시점·sitelink) | **CC0** | 주 데이터 | 날짜 품질 불균일 |
+| Wikipedia | CC BY-SA | **링크만** 건다 | 본문을 복제하지 않으므로 표기 의무가 발생하지 않는다 |
 | Natural Earth | Public Domain | (Phase 6) 현대 경계 | — |
 | aourednik/historical-basemaps | 저장소 조건 확인 필요 | (Phase 6) 시대별 경계 | 저자가 "work in progress, 학술 사용 전 검증 필요" 명시 |
 
-`SourceRef.attribution` 필드가 CC BY-SA 출처의 표기 의무를 담기 위해 존재한다.
+요약문은 Wikipedia REST 가 아니라 **Wikidata description(CC0)** 을 쓴다. 항목당 REST 호출이 사라지고 CC BY-SA 표기 의무도 발생하지 않는다. 대가는 요약이 짧다는 것이며, 더 풍부한 본문이 필요해지면 그때 Wikipedia extracts 를 batch API 로 붙이고 `SourceRef.attribution` 을 채운다.
 
 ---
 

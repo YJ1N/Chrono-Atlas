@@ -8,7 +8,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // ETL 의 순수 로직(날짜 파싱·점수·분할)도 같은 기준으로 검증한다.
+    // 데이터가 한 번 굳으면 틀린 채로 오래 남기 때문이다.
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
   },
   resolve: {
     alias: {

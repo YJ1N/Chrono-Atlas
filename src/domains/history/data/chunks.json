@@ -1,0 +1,96 @@
+{
+  "chunks": [
+    {
+      "id": "history-000",
+      "range": {
+        "start": -13589997974,
+        "end": 1001
+      },
+      "path": "/data/history/history-000.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6230617378391153
+      }
+    },
+    {
+      "id": "history-001",
+      "range": {
+        "start": 901,
+        "end": 1600
+      },
+      "path": "/data/history/history-001.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6158416066661381
+      }
+    },
+    {
+      "id": "history-002",
+      "range": {
+        "start": 1503.6328767123289,
+        "end": 1800
+      },
+      "path": "/data/history/history-002.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6230617378391153
+      }
+    },
+    {
+      "id": "history-003",
+      "range": {
+        "start": 1771.1342465753426,
+        "end": 1953
+      },
+      "path": "/data/history/history-003.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6230617378391153
+      }
+    },
+    {
+      "id": "history-004",
+      "range": {
+        "start": 1864.5765027322404,
+        "end": 2000
+      },
+      "path": "/data/history/history-004.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.619474521379215
+      }
+    },
+    {
+      "id": "history-005",
+      "range": {
+        "start": 1939.9835616438356,
+        "end": 2009.3753424657534
+      },
+      "path": "/data/history/history-005.json",
+      "itemCount": 900,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6230617378391153
+      }
+    },
+    {
+      "id": "history-006",
+      "range": {
+        "start": 1992.5792349726776,
+        "end": 2029.6657534246576
+      },
+      "path": "/data/history/history-006.json",
+      "itemCount": 898,
+      "significanceRange": {
+        "min": 0,
+        "max": 0.6230617378391153
+      }
+    }
+  ],
+  "overviewFloor": 0.6230617378391153
+}

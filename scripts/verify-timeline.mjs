@@ -37,6 +37,21 @@ page.on("console", (m) => {
 });
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
+/**
+ * 지연 로드된 detail 청크 (ADR-015).
+ *
+ * 단위 테스트는 "어느 청크가 필요한가" 를 검증하지만, 실제로 그것만
+ * 받아오는지는 네트워크를 봐야 안다. 시간 겹침만으로 판정하는 버그가
+ * 들어오면 전체 보기에서 8개를 전부 받아버리는데, 화면은 멀쩡해 보인다.
+ */
+const chunkRequests = new Set();
+let overviewRequested = false;
+page.on("request", (r) => {
+  const m = /\/data\/history\/(history-\d+)\.json/.exec(r.url());
+  if (m) chunkRequests.add(m[1]);
+  if (r.url().includes("overview.json")) overviewRequested = true;
+});
+
 await page.goto(URL, { waitUntil: "networkidle" });
 await page.waitForTimeout(400);
 
@@ -243,6 +258,45 @@ check("조작 후에도 지형이 남는다", (await terrainCoverage()) > 0.15);
 check("조작 후에도 봉우리가 남는다", (await peakCount()) > 0);
 check("조작 중 콘솔 에러 없음", consoleErrors.length === 0, consoleErrors.slice(0, 2).join(" | "));
 await page.screenshot({ path: `${OUT}/r5-after-stress.png` });
+
+// ── 7. 청크 지연 로딩 (ADR-015) ─────────────────────────────────
+check(
+  "확대하면 detail 청크를 지연 로드한다",
+  chunkRequests.size > 0,
+  `${chunkRequests.size}개`,
+);
+
+/**
+ * 여기가 요점이다. 138억 년 뷰는 **모든** 청크와 시간상 겹친다.
+ * 시간만으로 판정하면 이 화면에서 전부 내려받는다 — 지연 로딩이 아니라
+ * 지연된 일괄 로딩이다. 줌이 정하는 중요도 하한이 청크를 걸러야 한다.
+ */
+// 앞 단계에서 열린 상세 패널이 헤더 버튼을 덮는다.
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+await page.getByRole("button", { name: "138억 년" }).click();
+await page.waitForTimeout(1600);
+const beforeIdle = chunkRequests.size;
+await page.waitForTimeout(1200);
+
+check(
+  "전체 보기에서는 새 청크를 받지 않는다 (중요도 게이트)",
+  chunkRequests.size === beforeIdle,
+  `${beforeIdle} → ${chunkRequests.size}`,
+);
+/**
+ * overview 는 번들이지 요청이 아니다 (ADR-015).
+ *
+ * 이걸 fetch 로 바꾸면 콜드 오픈 직후 지형이 빈 채로 남는데, 화면은
+ * "아직 로딩 중" 처럼 보여서 눈으로는 잡히지 않는다.
+ */
+check(
+  "overview 는 네트워크로 받지 않는다 (번들)",
+  !overviewRequested,
+);
+check("청크 로딩 중 콘솔 에러 없음", consoleErrors.length === 0);
+
+log(`\n지연 로드된 detail 청크: ${chunkRequests.size}개`);
 
 await browser.close();
 log(`\n스크린샷: ${OUT}`);

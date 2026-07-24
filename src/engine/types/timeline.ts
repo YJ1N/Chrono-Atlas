@@ -155,7 +155,7 @@ export interface Category {
   colorToken: string;
 }
 
-/** 시간 버킷 단위로 분할된 정적 데이터 파일 하나. */
+/** 분할된 정적 데이터 파일 하나. */
 export interface ChunkManifest {
   id: string;
   /** 이 청크가 담당하는 구간. */
@@ -163,6 +163,15 @@ export interface ChunkManifest {
   /** public/ 기준 경로. */
   path: string;
   itemCount: number;
+  /**
+   * 이 청크가 담은 항목의 중요도 대역.
+   *
+   * 시간 겹침만으로 로딩을 판정하면 전체 보기에서 모든 청크가 겹쳐
+   * 첫 화면에 전부 내려받게 된다 — 지연 로딩이 아니라 지연된 일괄 로딩이다.
+   * 줌에 따라 보이는 중요도 하한이 정해지므로(ADR-013), 이 대역이 그 하한
+   * 아래면 청크 전체가 안 보인다는 뜻이고 네트워크 이전에 건너뛸 수 있다.
+   */
+  significanceRange?: { min: number; max: number };
 }
 
 /**

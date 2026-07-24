@@ -46,3 +46,6 @@ next-env.d.ts
 # 필요하면 다시 받는다: https://github.com/anthropics/skills
 .claude/skills/
 .claude/settings.local.json
+
+# ETL 원본 응답 캐시 — 재생성 가능하고 크다. 산출물(public/data, src/domains/history/data)은 커밋한다.
+scripts/etl/.cache/

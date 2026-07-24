@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run lint && npm run typecheck && npm run test",
-    "verify:browser": "node scripts/verify-timeline.mjs"
+    "verify:browser": "node scripts/verify-timeline.mjs",
+    "etl": "tsx scripts/etl/index.ts",
+    "etl:probe": "tsx scripts/etl/probe.ts"
   },
   "dependencies": {
     "motion": "^12.42.2",

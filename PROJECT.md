@@ -24,9 +24,9 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색한다. 역사는 첫 
 
 ## 현재 상태
 
-**Phase 2R 완료** — 138억 년을 60fps 로 탐험할 수 있는 시간 지형
+**Phase 3 완료** — 실데이터 7,182건 위에서 도는 시간 지형
 
-Phase 2 는 기술적으로 성공했고 제품적으로 실패했다(Gantt 차트였다). 뷰 계층을 전부 버리고 다시 설계했으며, `engine/` 은 한 줄도 버리지 않았다.
+수작업 시드 195건이 Wikidata ETL 산출물로 교체됐다. 스키마와 위치는 그대로이고 출처만 바뀌었다 — 그러라고 Phase 1 에서 타입을 맞춰 둔 것이다.
 
 | 계층 | 모듈 |
 |---|---|
@@ -35,11 +35,15 @@ Phase 2 는 기술적으로 성공했고 제품적으로 실패했다(Gantt 차�
 | **필드** | `DensityField` — 지형의 고도값 |
 | **렌더 규칙** | `tiers` — cosmic→moment 5단 변태 |
 | **뷰포트** | `ViewportController` · `inertia` · `useViewport` |
-| **UI** | `Atlas` · `TerrainLayer`(Canvas) · `PeakLayer` · `EraLayer` · `Horizon` · `DetailPanel` · `ColdOpen` · `Overlays` |
-| **도메인** | `domains/history` — 시드 195건 + 랜드마크 8개 |
+| **UI** | `Atlas` · `ChunkedAtlas` · `TerrainLayer`(Canvas) · `PeakLayer` · `EraLayer` · `Horizon` · `DetailPanel` · `ColdOpen` · `Overlays` |
+| **ETL** | `queries`(16 소스) · `wikitime` · `normalize` · `score` · `enrich` · `chunk` · `report` · `deep-time` |
+| **도메인** | `domains/history` — **7,182건** + 랜드마크 8개 |
 
-**단위 테스트 241개 · 브라우저 검증 28개 항목 전체 통과.**
-브라우저 실측: p50 프레임 간격 16.7ms(60fps), 드롭 0%, 지형이 화면의 62% 를 채운다.
+**단위 테스트 293개 · 브라우저 검증 32개 항목 전체 통과.**
+브라우저 실측(7,182건, 시드의 36배): p50 프레임 간격 **16.7ms(60fps)**, 드롭 **0%**, 최악 17.7ms.
+
+데이터: overview **884건**(번들 416KB, 첫 페인트) + detail 청크 **7개**(2.8MB, 지연 로드).
+검증 리포트: [`scripts/etl/REPORT.md`](scripts/etl/REPORT.md) — 날짜 파싱 실패율 **0.0%**, 언어 편향 실측.
 
 **엔진 경계가 ESLint 로 강제된다.** 실제 위반 파일로 발동을 확인했다.
 
@@ -47,9 +51,11 @@ Phase 2 는 기술적으로 성공했고 제품적으로 실패했다(Gantt 차�
 npm run verify          # lint + typecheck + test
 npm run dev
 npm run verify:browser  # 브라우저 실측 (dev 서버 필요)
+npm run etl             # Wikidata 수집 → 산출물 재생성 (수동, 커밋 대상)
+npm run etl:probe       # 쿼리가 WDQS 60초 제한을 통과하는지만 점검
 ```
 
-**다음: Phase 3 (Wikidata ETL).** 시작 지침은 [ROADMAP.md](ROADMAP.md) 참조.
+**다음: Phase 4 (탐색 UX — ⌘K 검색, URL 딥링크, 키보드 순회).**
 
 
 ---
