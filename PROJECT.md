@@ -18,30 +18,28 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색한다. 역사는 첫 
 
 **2. 뷰포트 수치 안정성.** 138억 년 → 하루는 약 5e12배 줌이다. d3-zoom 처럼 배율 스칼라를 누적하면 float 정밀도가 무너져 패닝이 떨린다. → `{center, span}` 직접 소유. ADR-002.
 
-**3. Y축이 무엇인가.** 시간은 1D 다. Maps 가 Maps 인 이유는 2D 공간 + *줌별 의미 수준 변화* 때문이다. 그냥 1D 로 만들면 지도가 아니라 슬라이더다. → 두 번째 축은 범주형 레인, 의미 수준 변화에 대응하는 것은 **LOD**(중요도 기반 선별). ADR-010.
+**3. Y축이 무엇이고, 줌이 무엇을 바꾸는가.** 시간은 1D 다. Maps 가 Maps 인 이유는 2D 공간 + *줌별 의미 수준 변화* 때문이다. → Y축은 **연속적인 중요도**이며 줌에 결합된다(ADR-013). 그리고 줌은 배율이 아니라 **표현 자체**를 바꾼다(ADR-012). 첫 시도의 범주형 레인은 Y축이 아니라 스프레드시트 행 머리글이었다.
 
 ---
 
 ## 현재 상태
 
-**Phase 0 · 1 · 2 완료** — 138억 년을 60fps 로 탐색할 수 있는 상태
+**Phase 2R 완료** — 138억 년을 60fps 로 탐험할 수 있는 시간 지형
 
-| 모듈 | 상태 | 내용 |
-|---|---|---|
-| `engine/types/timeline.ts` | ✅ | 코어 타입 — 도메인 무관 |
-| `engine/time/TimePoint.ts` | ✅ | 연도 ↔ 달력 ↔ 표시 변환, 정밀도, 포맷팅 |
-| `engine/time/TimeScale.ts` | ✅ | time ↔ pixel 매핑, 줌/팬 대수, 정밀도 하한 |
-| `engine/time/ticks.ts` | ✅ | 17자릿수 대응 적응형 눈금 |
-| `engine/index/IntervalIndex.ts` | ✅ | 범위 질의 O(log n + k) |
-| `engine/index/lod.ts` | ✅ | 중요도 기반 선별 — DOM 노드 상한을 만든다 |
-| `engine/index/collision.ts` | ✅ | 구간 분할 — 겹치는 항목을 여러 줄로 |
-| `engine/viewport/ViewportController.ts` | ✅ | 뷰포트의 유일한 소유자 |
-| `components/timeline/` | ✅ | Timeline · TimeAxis · 입력 처리 |
-| `domains/history/` | ✅ | 시드 195건 (Phase 3 에서 ETL 로 교체) |
+Phase 2 는 기술적으로 성공했고 제품적으로 실패했다(Gantt 차트였다). 뷰 계층을 전부 버리고 다시 설계했으며, `engine/` 은 한 줄도 버리지 않았다.
 
-**단위 테스트 137개 통과.** 138억 년~하루 전 구간 왕복 변환, 5개 연도 전체 날짜 왕복, 2000개 혼합 구간에 대한 무작위 300회 참조 대조, 전 줌 범위 눈금 불변식 포함.
+| 계층 | 모듈 |
+|---|---|
+| **시간** | `TimePoint` · `TimeScale` · `ticks` · `significance` · `projection` |
+| **색인** | `IntervalIndex` · `lod` · `collision` |
+| **필드** | `DensityField` — 지형의 고도값 |
+| **렌더 규칙** | `tiers` — cosmic→moment 5단 변태 |
+| **뷰포트** | `ViewportController` · `inertia` · `useViewport` |
+| **UI** | `Atlas` · `TerrainLayer`(Canvas) · `PeakLayer` · `EraLayer` · `Horizon` · `DetailPanel` · `ColdOpen` · `Overlays` |
+| **도메인** | `domains/history` — 시드 195건 + 랜드마크 8개 |
 
-**브라우저 실측 통과.** p50 프레임 간격 16.7ms(60fps), 드롭 0%.
+**단위 테스트 241개 · 브라우저 검증 28개 항목 전체 통과.**
+브라우저 실측: p50 프레임 간격 16.7ms(60fps), 드롭 0%, 지형이 화면의 62% 를 채운다.
 
 **엔진 경계가 ESLint 로 강제된다.** 실제 위반 파일로 발동을 확인했다.
 
@@ -50,6 +48,9 @@ npm run verify          # lint + typecheck + test
 npm run dev
 npm run verify:browser  # 브라우저 실측 (dev 서버 필요)
 ```
+
+**다음: Phase 3 (Wikidata ETL).** 시작 지침은 [ROADMAP.md](ROADMAP.md) 참조.
+
 
 ---
 

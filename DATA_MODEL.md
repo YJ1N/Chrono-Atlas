@@ -70,25 +70,32 @@
 - `context` — 배경 리본 (시대, 왕조, 지질시대, 제품 세대 …)
 - `primary` — 전경 마크 (개별 사건)
 
-### `significance` — 이 모델의 심장
+### `significance` — 이 모델의 심장이자 **Y축 그 자체**
 
-LOD 가 이 값으로 "지금 이 줌 레벨에서 무엇을 보여줄지"를 결정한다. Google Maps 가 세계 줌에서 국가만, 거리 줌에서 카페까지 보여주는 것과 같은 역할이다. **이 값이 없으면 ChronoAtlas 는 스크롤 막대다.**
+LOD 가 이 값으로 "지금 이 줌 레벨에서 무엇을 보여줄지"를 결정하고, Phase 2R 부터는 **화면상의 세로 위치**이기도 하다 (ADR-013). Google Maps 가 세계 줌에서 국가만, 거리 줌에서 카페까지 보여주는 것과 같은 역할이다. **이 값이 없으면 ChronoAtlas 는 스크롤 막대다.**
 
 산출: `normalize(log(sitelinkCount))` — sitelink 수는 해당 엔티티에 대한 문서가 존재하는 위키백과 언어판 개수 (ADR-009).
 
 > **알려진 편향 — 감출 수 없는 한계**
 >
-> sitelink 수는 영어권·서구 중심으로 기운다. 서유럽 중세사가 동남아시아 동시대사보다 체계적으로 높은 점수를 받는다. 이는 데이터의 성질이지 버그가 아니며, UI 각주에 명시한다. 향후 언어판별 가중치나 다중 신호로 보정한다.
+> sitelink 수는 영어권·서구 중심으로 기운다. 서유럽 중세사가 동남아시아 동시대사보다 체계적으로 높은 점수를 받는다.
+>
+> **Phase 2R 에서 이 위험이 커졌다.** `significance` 가 Y축이 되면서 편향이 이제 제품의 *지형* 그 자체다 — 문서 각주로 적는 것과 차원이 다르다. Phase 3 ETL 은 이 분포를 반드시 리포트로 출력해야 하고, 축을 다른 지표로 재바인딩할 수 있게 설계를 열어 둔다.
 
 ---
 
 ## 도메인 구성
 
 ```ts
-Lane      { id, label, order }                 // 시간이 1D 이므로 사실상의 Y축
+Lane      { id, label, order }                 // 분류용. 현재 UI 는 렌더링하지 않는다
 Category  { id, label, colorToken }            // 색상값이 아니라 토큰 이름
-Domain    { id, label, lanes, categories, defaultViewport, chunks }
+Landmark  { id, label, time }                  // 수평선의 고정 참조점
+Domain    { id, label, lanes, categories, defaultViewport, chunks, landmarks? }
 ```
+
+**`Lane` 은 남아 있지만 화면에 그려지지 않는다.** Phase 2R 에서 Y축이 연속 중요도로 바뀌면서(ADR-013) 레인은 렌더링 역할을 잃었다. 필터·범례 같은 분류 용도로 남겨 둔 것이며, Phase 4 에서 쓰이지 않으면 제거를 검토한다.
+
+**`Landmark` 는 시간의 해안선이다.** 어느 줌에서도 수평선에 보이는 고정 참조점(빅뱅·지구·생명·캄브리아·공룡 멸종·인류·농업·현재). Maps 를 Maps 로 만드는 것의 절반은 이탈리아 장화와 오대호다 — 형상이 있어야 "내가 어디 있는지" 를 안다. 도메인마다 다르므로 값은 도메인이 준다.
 
 **새 도메인 추가 = `Domain` 객체 하나 추가.** `engine/` 은 이 타입만 알고 그 안의 값은 알지 못한다.
 

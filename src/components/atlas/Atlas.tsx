@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 
+import { ColdOpen } from "./ColdOpen";
 import { CursorReadout } from "./CursorReadout";
 import { DetailPanel } from "./DetailPanel";
 import { EraLayer } from "./EraLayer";
@@ -247,9 +248,20 @@ export function Atlas({
       .query(focus - reach, focus + reach)
       .filter((item) => item.id !== selected.id)
       .map((item) => {
-        const distance = Math.abs(
-          (item.span.start + item.span.end) / 2 - focus,
-        );
+        /**
+         * 이 시점을 **포함하는** 구간은 거리 0 이다.
+         *
+         * 중점까지의 거리로 재면 신생대(6600만 년)처럼 긴 시대가 지금 이
+         * 순간을 감싸고 있는데도 "멀다" 고 판정된다. 구간 밖일 때만
+         * 가장 가까운 끝까지의 거리를 쓴다.
+         */
+        const distance =
+          item.span.start <= focus && focus <= item.span.end
+            ? 0
+            : Math.min(
+                Math.abs(item.span.start - focus),
+                Math.abs(item.span.end - focus),
+              );
         return { item, score: item.significance / (1 + distance / reach) };
       })
       .sort((a, b) => b.score - a.score)
@@ -335,6 +347,10 @@ export function Atlas({
           </button>
         </div>
       </header>
+
+      {size.width > 0 && (
+        <ColdOpen controller={controller} target={domain.defaultViewport} />
+      )}
 
       <DetailPanel
         item={selected}

@@ -38,7 +38,18 @@ page.on("console", (m) => {
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
 await page.goto(URL, { waitUntil: "networkidle" });
-await page.waitForTimeout(800);
+await page.waitForTimeout(400);
+
+/**
+ * 콜드 오픈은 첫 4초간 뷰포트를 138억 년으로 끌고 간다.
+ * 건너뛰지 않으면 이후의 초기 상태 검사가 전부 인트로 중간을 재게 된다.
+ * 겸사겸사 "건너뛸 수 있는가" 를 확인한다 — 못 건너뛰는 인트로는 결함이다.
+ */
+const coldOpen = page.getByTestId("cold-open");
+check("콜드 오픈이 실행된다", await coldOpen.isVisible());
+await page.keyboard.press("Escape");
+await page.waitForTimeout(700);
+check("콜드 오픈을 입력으로 건너뛸 수 있다", !(await coldOpen.isVisible()));
 
 const plot = page.locator('[role="application"]');
 const tier = async () => (await page.getByTestId("tier-badge").textContent()) ?? "";

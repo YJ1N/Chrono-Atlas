@@ -73,12 +73,19 @@ export function TerrainLayer({
      * 지형은 배경 장식이 아니라 **화면의 주인공**이다. 너무 어두우면
      * 이전과 똑같이 "빈 화면에 점이 떠 있는" 그림이 된다.
      * 능선 바로 아래가 가장 밝고 아래로 갈수록 깊어진다 — 물속처럼.
+     *
+     * 색은 CSS 토큰에서 읽는다. 하드코딩하면 라이트 테마에서 어긋난다 —
+     * Canvas 는 CSS 를 모르므로 이 다리를 직접 놓아야 한다.
      */
+    const rgb = readToken(canvas, "--terrain-rgb", "126 152 255").replace(
+      /\s+/g,
+      ", ",
+    );
     const fill = ctx.createLinearGradient(0, 0, 0, height);
-    fill.addColorStop(0, "rgba(126, 152, 255, 0.42)");
-    fill.addColorStop(0.35, "rgba(96, 116, 224, 0.26)");
-    fill.addColorStop(0.75, "rgba(64, 78, 170, 0.13)");
-    fill.addColorStop(1, "rgba(44, 54, 130, 0.05)");
+    fill.addColorStop(0, `rgba(${rgb}, 0.42)`);
+    fill.addColorStop(0.35, `rgba(${rgb}, 0.26)`);
+    fill.addColorStop(0.75, `rgba(${rgb}, 0.13)`);
+    fill.addColorStop(1, `rgba(${rgb}, 0.05)`);
 
     ctx.beginPath();
     ctx.moveTo(0, height);
@@ -94,7 +101,7 @@ export function TerrainLayer({
       if (i === 0) ctx.moveTo(line[i], line[i + 1]);
       else ctx.lineTo(line[i], line[i + 1]);
     }
-    ctx.strokeStyle = "rgba(190, 210, 255, 0.75)";
+    ctx.strokeStyle = readToken(canvas, "--terrain-ridge", "rgba(190,210,255,0.75)");
     ctx.lineWidth = 1.25;
     ctx.stroke();
 
@@ -155,4 +162,17 @@ export function TerrainLayer({
       style={{ width, height }}
     />
   );
+}
+
+/**
+ * CSS 커스텀 속성을 Canvas 로 가져온다.
+ *
+ * Canvas 2D 컨텍스트는 `var(--x)` 를 이해하지 못하므로 계산된 값을 직접
+ * 읽어야 한다. 값이 없으면 폴백을 쓴다 — 서버 렌더나 테스트 환경에서
+ * 계산 스타일이 비어 있을 수 있다.
+ */
+function readToken(el: Element, name: string, fallback: string): string {
+  if (typeof getComputedStyle !== "function") return fallback;
+  const value = getComputedStyle(el).getPropertyValue(name).trim();
+  return value || fallback;
 }

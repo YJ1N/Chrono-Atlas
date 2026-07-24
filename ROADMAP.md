@@ -90,23 +90,53 @@ Phase 2 는 기술적으로 성공했고(60fps) 제품적으로 실패했다. Ga
 
 부수적으로 해결한 것: 데이터 끝의 수직 절벽 → "지금" 마커 + 지형 페이드.
 
-### ⬜ Phase 3 — 데이터 파이프라인 · **난이도 중상**
+### ⬜ Phase 3 — 데이터 파이프라인 · **난이도 중상** · 다음 작업
 
-`scripts/etl/` — SPARQL → normalize → significance → chunk. `domains/history/` 생성.
+> **새 세션 시작 지침.** 먼저 `PROJECT.md`(현재 상태)와 `DECISIONS.md`(ADR-009·013·014)를 읽는다.
+> `npm run verify` 와 `npm run verify:browser` 가 통과하는 상태에서 시작해야 한다.
 
-실데이터 규모에서만 LOD 의 진짜 문제가 드러난다.
+**목표:** `src/domains/history/seed.ts`(수작업 195건)를 Wikidata ETL 산출물로 교체한다.
+스키마와 위치는 그대로이고 **출처만 바뀐다** — 그래서 지금 타입을 맞춰 둔 것이다.
 
-- 의존: Phase 1 타입 확정. `domains/history/seed.ts` 를 ETL 산출물로 교체한다
-- 산출: `public/data/history/*.json` (커밋)
-- 검증 리포트 필수: 날짜 파싱 실패율, significance 분포, 레인별 건수
+**만들 것**
+
+```
+scripts/etl/
+  fetch-wikidata.ts   # SPARQL → raw JSON (재실행 가능하게 캐시)
+  normalize.ts        # raw → TimelineItem. 날짜 파싱·정밀도 판정
+  score.ts            # sitelinkCount → significance (log 정규화)
+  chunk.ts            # 시간 버킷별 분할 → public/data/history/
+  report.ts           # 검증 리포트
+```
+
+`package.json` 에 `"etl": "tsx scripts/etl/index.ts"` 를 추가한다.
+
+**반드시 지킬 것**
+
+1. **런타임 API 0개.** ETL 은 로컬에서 수동 실행하고 산출물을 커밋한다 (ADR-007).
+2. **검증 리포트 필수** — 날짜 파싱 실패율, `significance` 분포 히스토그램, 카테고리별 건수, 시대별 밀도. 조용히 통과시키면 안 된다.
+3. **`significance` 편향을 리포트에 넣는다.** Phase 2R 에서 이 값이 Y축이 되었으므로 편향이 이제 제품의 지형 그 자체다 (ADR-013). 언어권별 분포를 반드시 출력한다.
+4. **Wikipedia 요약문은 CC BY-SA** — `SourceRef.attribution` 과 원문 링크를 채운다. Wikidata 본체는 CC0 라 자유롭다.
+5. **`Domain.chunks` 를 채운다.** 현재 빈 배열이고 시드가 번들에 직접 들어가 있다. 청크 로더는 `dynamic import` + 모듈 캐시로 만든다 (ADR-007).
+
+**이 단계에서 드러날 것**
+
+- 실데이터 규모(5,000~20,000건)에서 LOD 와 `DensityField` 의 진짜 성능. `computeDensityField` 는 현재 항목 수에 선형이며 구간 항목은 덮는 bin 수만큼 돈다 — 5만 건에서 재검토가 필요할 수 있다.
+- **cosmic 뷰의 데이터 공백.** 현재 시드는 138억~46억 년 구간에 6건뿐이라 지형이 평평하다. 렌더링이 아니라 데이터 문제이며 이 단계가 해결한다.
+
+**완료 기준**
+
+`npm run verify` + `npm run verify:browser` 통과 · 리포트 산출 · 시드 파일 제거
 
 ### ⬜ Phase 4 — 탐색 UX · **난이도 중**
 
-상세 패널, ⌘K 검색, URL 딥링크, 밀도 미니맵, 키보드 탐색.
+⌘K 검색, **URL 딥링크**, 봉우리 키보드 순회(`Tab`)와 스크린리더 대응.
 
-1D 의 빈약함을 상쇄하는 요소들. **URL 딥링크는 나중에 붙일 수 없으므로 이 단계에서 반드시 넣는다.**
+상세 패널·밀도 지형·수평선은 Phase 2R 에서 이미 만들었다. 남은 핵심은 딥링크다 — **나중에 붙일 수 없으므로 이 단계에서 반드시 넣는다.**
 
-- 의존: Phase 2, 3
+`Lane` 이 렌더링 역할을 잃었으므로(ADR-013) 필터 UI 로 쓰거나 제거할지 여기서 결정한다.
+
+- 의존: Phase 3
 
 ### ⬜ Phase 5 — 마감 · **난이도 중**
 
