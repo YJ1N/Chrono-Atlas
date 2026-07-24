@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Atlas } from "./Atlas";
+import type { SearchRecord } from "@/engine/index/search";
 import type { ChunkManifest, Domain, TimelineItem, Viewport } from "@/engine/types/timeline";
 
 /**
@@ -19,6 +20,7 @@ export function ChunkedAtlas({
   overview,
   chunksFor,
   loadChunk,
+  loadSearchIndex,
 }: {
   domain: Domain;
   /** 번들에 들어 있어 첫 페인트에 이미 존재하는 항목. */
@@ -26,6 +28,8 @@ export function ChunkedAtlas({
   /** 이 뷰포트에서 필요한 청크. 시간과 중요도 양쪽으로 걸러진다. */
   chunksFor: (viewport: Viewport) => ChunkManifest[];
   loadChunk: (manifest: ChunkManifest) => Promise<TimelineItem[]>;
+  /** ⌘K 검색 색인. 도메인이 주고 Atlas 까지 그대로 전달된다. */
+  loadSearchIndex?: () => Promise<readonly SearchRecord[]>;
 }) {
   const [loaded, setLoaded] = useState<ReadonlyMap<string, TimelineItem[]>>(
     () => new Map(),
@@ -65,6 +69,11 @@ export function ChunkedAtlas({
   );
 
   return (
-    <Atlas domain={domain} items={items} onViewportChange={handleViewportChange} />
+    <Atlas
+      domain={domain}
+      items={items}
+      onViewportChange={handleViewportChange}
+      loadSearchIndex={loadSearchIndex}
+    />
   );
 }

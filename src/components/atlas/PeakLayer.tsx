@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 import { blendedRecipe } from "@/engine/render/tiers";
+import { formatTimePoint } from "@/engine/time/TimePoint";
 import { createTimeScale } from "@/engine/time/TimeScale";
 import {
   fadeInOpacity,
@@ -107,7 +108,8 @@ export function PeakLayer({
       width={width}
       height={height}
       className="absolute inset-0 block overflow-hidden"
-      role="presentation"
+      role="group"
+      aria-label="주요 사건"
     >
       <g ref={rootRef}>
         {items.map((item) => {
@@ -120,8 +122,27 @@ export function PeakLayer({
               key={item.id}
               data-start={item.span.start}
               data-sig={item.significance}
-              className="cursor-pointer"
+              className="cursor-pointer outline-none [&:focus-visible_.peak-ring]:opacity-100"
               onClick={() => onSelect(item)}
+              /**
+               * ── 라벨이 붙은 봉우리만 탭 정지가 된다
+               * 화면에는 최대 300개가 있지만 이름이 보이는 것은 티어당
+               * 6~24개다. 300개를 전부 탭 정지로 만들면 스크린리더 사용자가
+               * 이름 없는 점 사이를 수백 번 지나야 하고, 키보드 사용자는
+               * 이 영역을 빠져나가지 못한다. 읽을 수 있는 것만 노출한다.
+               */
+              {...(labeled
+                ? {
+                    tabIndex: 0,
+                    role: "button",
+                    "aria-label": `${item.title}, ${formatTimePoint(item.span.start)}`,
+                    onKeyDown: (event: React.KeyboardEvent) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      onSelect(item);
+                    },
+                  }
+                : { "aria-hidden": true })}
             >
               {/* 발광 — 필터 대신 큰 반투명 원. 필터는 프레임을 잡아먹는다 */}
               <circle
@@ -143,6 +164,15 @@ export function PeakLayer({
                   strokeOpacity={0.9}
                 />
               )}
+              {/* 키보드 포커스 표시 — 마우스 클릭에는 나타나지 않는다 */}
+              <circle
+                className="peak-ring pointer-events-none opacity-0"
+                r={r + 11}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                strokeDasharray="3 3"
+              />
               {labeled && (
                 <text
                   x={r + 9}

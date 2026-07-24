@@ -5,6 +5,7 @@ import {
   HISTORY_OVERVIEW,
   chunksForViewport,
   loadChunk,
+  loadSearchIndex,
 } from "@/domains/history/loader";
 import { HISTORY_DOMAIN } from "@/domains/history/manifest";
 
@@ -23,6 +24,7 @@ export default function Home() {
         overview={HISTORY_OVERVIEW}
         chunksFor={chunksForViewport}
         loadChunk={loadChunk}
+        loadSearchIndex={loadSearchIndex}
       />
     </main>
   );

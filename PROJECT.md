@@ -24,26 +24,27 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색한다. 역사는 첫 
 
 ## 현재 상태
 
-**Phase 3 완료** — 실데이터 7,182건 위에서 도는 시간 지형
+**Phase 4 완료** — 검색·딥링크·키보드로 탐색 가능한 시간 지형
 
-수작업 시드 195건이 Wikidata ETL 산출물로 교체됐다. 스키마와 위치는 그대로이고 출처만 바뀌었다 — 그러라고 Phase 1 에서 타입을 맞춰 둔 것이다.
+Phase 3 이 실데이터 7,182건을 얹었고, Phase 4 가 그것을 **찾고 공유할 수 있게** 만들었다. 딥링크는 나중에 붙일 수 없어서 이 단계에 넣었다 — 공유가 안 되면 탐험의 결과가 휘발된다.
 
 | 계층 | 모듈 |
 |---|---|
 | **시간** | `TimePoint` · `TimeScale` · `ticks` · `significance` · `projection` |
-| **색인** | `IntervalIndex` · `lod` · `collision` |
+| **색인** | `IntervalIndex` · `lod` · `collision` · `search` |
 | **필드** | `DensityField` — 지형의 고도값 |
 | **렌더 규칙** | `tiers` — cosmic→moment 5단 변태 |
-| **뷰포트** | `ViewportController` · `inertia` · `useViewport` |
-| **UI** | `Atlas` · `ChunkedAtlas` · `TerrainLayer`(Canvas) · `PeakLayer` · `EraLayer` · `Horizon` · `DetailPanel` · `ColdOpen` · `Overlays` |
+| **뷰포트** | `ViewportController` · `inertia` · `useViewport` · `urlState` |
+| **UI** | `Atlas` · `ChunkedAtlas` · `CommandPalette` · `TerrainLayer`(Canvas) · `PeakLayer` · `EraLayer` · `Horizon` · `DetailPanel` · `ColdOpen` · `Overlays` |
 | **ETL** | `queries`(16 소스) · `wikitime` · `normalize` · `score` · `enrich` · `chunk` · `report` · `deep-time` |
 | **도메인** | `domains/history` — **7,182건** + 랜드마크 8개 |
 
-**단위 테스트 293개 · 브라우저 검증 32개 항목 전체 통과.**
+**단위 테스트 328개 · 브라우저 검증 48개 항목 전체 통과.**
 브라우저 실측(7,182건, 시드의 36배): p50 프레임 간격 **16.7ms(60fps)**, 드롭 **0%**, 최악 17.7ms.
 
 데이터: overview **884건**(번들 416KB, 첫 페인트) + detail 청크 **7개**(2.8MB, 지연 로드).
 검증 리포트: [`scripts/etl/REPORT.md`](scripts/etl/REPORT.md) — 날짜 파싱 실패율 **0.0%**, 언어 편향 실측.
+검색 색인 7,182건은 ⌘K 를 처음 열 때만 받는다(585KB). 딥링크는 도달 가능한 모든 뷰포트에서 오차 0px 로 복원된다 (ADR-017).
 
 **엔진 경계가 ESLint 로 강제된다.** 실제 위반 파일로 발동을 확인했다.
 
@@ -55,7 +56,7 @@ npm run etl             # Wikidata 수집 → 산출물 재생성 (수동, 커�
 npm run etl:probe       # 쿼리가 WDQS 60초 제한을 통과하는지만 점검
 ```
 
-**다음: Phase 4 (탐색 UX — ⌘K 검색, URL 딥링크, 키보드 순회).**
+**다음: Phase 5 (마감 — 디자인 시스템 확정, 카테고리 필터, 접근성 감사, SSG, 배포).**
 
 
 ---
@@ -68,7 +69,6 @@ npm run etl:probe       # 쿼리가 WDQS 60초 제한을 통과하는지만 점�
 | React | 19.2.4 | |
 | 언어 | TypeScript 5 (strict) | |
 | 스타일 | Tailwind CSS 4 | |
-| 상태 | Zustand 5 | 저빈도 상태만 (ARCHITECTURE.md) |
 | 애니메이션 | motion 12 | UI 트랜지션 전용 |
 | 테스트 | Vitest 4 · Playwright | 커널 단위 검증 + 브라우저 실측 |
 | 런타임 | Node 26 / npm 11 | |
@@ -78,6 +78,7 @@ npm run etl:probe       # 쿼리가 WDQS 60초 제한을 통과하는지만 점�
 - **D3** — 시간축 스케일·눈금을 직접 소유하는 편이 짧고 정확했다. ADR-008.
 - **TanStack Query** — 런타임 API 가 0개면 서버 상태 라이브러리는 해결할 문제가 없다. ADR-007.
 - **타임라인 라이브러리** (vis-timeline 등) — 138억 년 동적 범위도 중요도 기반 LOD 도 지원하지 않는다. 자체 구현이 이 프로젝트의 핵심 가치다.
+- **Zustand** — 계획에는 있었고 실제로 설치까지 했으나 Phase 4 까지 와도 전역으로 나눌 상태가 없어 제거했다. 뷰포트는 `ViewportController`, 선택은 `Atlas`, 청크는 로더의 모듈 캐시가 들고 있다. 필요해지면 설치는 명령 하나다 (ARCHITECTURE.md).
 
 ---
 

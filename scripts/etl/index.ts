@@ -29,6 +29,7 @@ import { dedupeAcrossSources, normalizeSource } from "./normalize";
 import { runQuery } from "./sparql";
 import { SOURCES } from "./queries";
 import type { Candidate, SourceStats } from "./normalize";
+import type { SearchRecord } from "@/engine/index/search";
 import type { ChunkManifest, TimelineItem } from "@/engine/types/timeline";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -172,6 +173,39 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * 검색 색인 — 전 항목의 최소 레코드.
+   *
+   * 검색은 아직 받지 않은 청크의 항목도 찾아야 한다. "임진왜란" 을 쳤는데
+   * 그 청크를 안 받았다는 이유로 없다고 답하면 검색이 아니다.
+   *
+   * 배열로 쓴다. 객체로 두면 키 이름이 7천 번 반복되어 파일이 1.5배 커진다.
+   * `chunkId` 를 함께 담아, 선택 시 그 청크만 받아 정확히 집어낼 수 있게 한다.
+   */
+  const searchIndex: SearchRecord[] = [
+    ...plan.overview.map(
+      (item) =>
+        [item.id, item.title, item.span.start, item.significance, null] as const,
+    ),
+    ...plan.chunks.flatMap((chunk) =>
+      chunk.items.map(
+        (item) =>
+          [
+            item.id,
+            item.title,
+            item.span.start,
+            item.significance,
+            chunk.manifest.id,
+          ] as const,
+      ),
+    ),
+  ];
+  await writeFile(
+    join(PUBLIC_DIR, "search.json"),
+    JSON.stringify(searchIndex),
+    "utf8",
+  );
+
   const manifest: { chunks: ChunkManifest[]; overviewFloor: number } = {
     chunks: plan.chunks.map((c) => c.manifest),
     overviewFloor: plan.overviewFloor,
@@ -198,6 +232,7 @@ async function main(): Promise<void> {
   log(`\n산출`);
   log(`  overview   ${plan.overview.length}건 → src/domains/history/data/overview.json`);
   log(`  detail     ${plan.chunks.length}개 청크 → public${PUBLIC_BASE}/`);
+  log(`  검색 색인  ${searchIndex.length}건 → public${PUBLIC_BASE}/search.json`);
   log(`  리포트     scripts/etl/REPORT.md`);
   if (failedSources.length > 0) {
     log(`\n⚠ 실패한 소스 ${failedSources.length}개 — 리포트 맨 위를 볼 것`);

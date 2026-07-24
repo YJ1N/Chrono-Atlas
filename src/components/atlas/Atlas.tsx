@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { ColdOpen } from "./ColdOpen";
+import { CommandPalette } from "./CommandPalette";
 import { CursorReadout } from "./CursorReadout";
 import { DetailPanel } from "./DetailPanel";
 import { EraLayer } from "./EraLayer";
@@ -18,17 +19,24 @@ import { EraBackdrop, PresentMarker, ScaleNote } from "./Overlays";
 import { PeakLayer } from "./PeakLayer";
 import { TerrainLayer } from "./TerrainLayer";
 import { useAtlasInput } from "./useAtlasInput";
+import { useAtlasUrl } from "./useAtlasUrl";
 import { createItemIndex, IntervalIndex } from "@/engine/index/IntervalIndex";
 import { estimateLabelWidth } from "@/engine/index/collision";
 import { selectVisible } from "@/engine/index/lod";
 import { blendedRecipe, tierAt } from "@/engine/render/tiers";
-import { PRESENT_EPOCH, UNIVERSE_START, formatTimePoint } from "@/engine/time/TimePoint";
+import {
+  PRESENT_EPOCH,
+  UNIVERSE_START,
+  formatDuration,
+  formatTimePoint,
+} from "@/engine/time/TimePoint";
 import { createTimeScale, viewportForRange } from "@/engine/time/TimeScale";
 import {
   significanceToY,
   visibleSignificanceRange,
 } from "@/engine/time/significance";
 import { ViewportController } from "@/engine/viewport/ViewportController";
+import type { SearchHit, SearchRecord } from "@/engine/index/search";
 import type { Domain, TimelineItem, Viewport } from "@/engine/types/timeline";
 
 /** 봉우리 최소 간격 — 화면 내 DOM 노드 수의 상한을 만든다. */
@@ -42,6 +50,16 @@ const HORIZON_PX = 52;
 /** LOD 재계산 임계 — 매 프레임 재계산하면 React 렌더가 60fps 로 돌아 의미가 없다. */
 const LOD_SPAN_RATIO = 1.12;
 const LOD_CENTER_DRIFT = 0.12;
+
+/**
+ * 움직임이 멎었다고 보는 시간(ms).
+ *
+ * 위 임계값은 "충분히 움직였을 때만" 확정한다. 그래서 애니메이션이나 관성의
+ * **마지막 미세 이동**은 확정되지 않고 남는다. 화면은 이미 그곳에 있는데
+ * 확정된 값은 한 걸음 뒤에 있고, 그 값이 URL 에 실린다 — 공유한 링크가
+ * 실제로 본 화면과 달라진다. 멎으면 한 번 더 확정해 그 간극을 없앤다.
+ */
+const SETTLE_MS = 180;
 
 interface LodResult {
   peaks: TimelineItem[];
@@ -142,6 +160,7 @@ export function Atlas({
   domain,
   items,
   onViewportChange,
+  loadSearchIndex,
 }: {
   domain: Domain;
   items: TimelineItem[];
@@ -152,6 +171,11 @@ export function Atlas({
    * 60fps 가 필요 없는 일에 쓰라고 있는 구멍이다.
    */
   onViewportChange?: (viewport: Viewport) => void;
+  /**
+   * ⌘K 검색용 색인 로더. 주입받으므로 Atlas 는 도메인을 모른다 (ADR-003).
+   * 없으면 검색 UI 자체를 띄우지 않는다.
+   */
+  loadSearchIndex?: () => Promise<readonly SearchRecord[]>;
 }) {
   /**
    * 마지막으로 선별을 확정한 뷰포트.
@@ -165,9 +189,22 @@ export function Atlas({
 
   const [plotEl, setPlotEl] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [selected, setSelected] = useState<TimelineItem | null>(null);
+  /**
+   * 선택은 **id 로** 들고 있는다.
+   *
+   * 항목 객체를 들면, 검색이나 딥링크로 아직 받지 않은 청크의 항목을 고를 때
+   * 붙잡을 것이 없다. id 로 두면 청크가 늦게 도착해도 `selected` 가 저절로
+   * 맺힌다 — 기다렸다 채워 넣는 이펙트가 필요 없다.
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const index = useMemo(() => createItemIndex(items), [items]);
+
+  const selected = useMemo(
+    () => items.find((item) => item.id === selectedId) ?? null,
+    [items, selectedId],
+  );
 
   const controller = useMemo(
     () => new ViewportController({ initial: domain.defaultViewport, width: 1 }),
@@ -230,18 +267,38 @@ export function Atlas({
 
   useEffect(() => {
     let frame: number | null = null;
+    let settle: ReturnType<typeof setTimeout> | null = null;
+
     const unsubscribe = controller.subscribe(() => {
-      if (frame !== null) return;
-      frame = requestAnimationFrame(() => {
-        frame = null;
-        maybeCommitViewport();
-      });
+      // 움직이는 동안은 임계값을 넘을 때만 — 매 프레임 재선별하면 60fps 를 잃는다.
+      if (frame === null) {
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          maybeCommitViewport();
+        });
+      }
+      // 멎으면 한 번 더 — 마지막 미세 이동까지 확정해 URL 과 화면을 일치시킨다.
+      if (settle !== null) clearTimeout(settle);
+      settle = setTimeout(() => {
+        settle = null;
+        const current = controller.getSnapshot();
+        const last = lodViewportRef.current;
+        if (
+          !last ||
+          last.center !== current.center ||
+          last.span !== current.span
+        ) {
+          commitViewport();
+        }
+      }, SETTLE_MS);
     });
+
     return () => {
       unsubscribe();
       if (frame !== null) cancelAnimationFrame(frame);
+      if (settle !== null) clearTimeout(settle);
     };
-  }, [controller, maybeCommitViewport]);
+  }, [controller, maybeCommitViewport, commitViewport]);
 
   useAtlasInput(plotEl, controller);
 
@@ -254,7 +311,7 @@ export function Atlas({
    */
   const focusItem = useCallback(
     (item: TimelineItem) => {
-      setSelected(item);
+      setSelectedId(item.id);
       const current = controller.getSnapshot();
       const itemSpan = Math.max(item.span.end - item.span.start, 0);
       const targetSpan =
@@ -311,13 +368,57 @@ export function Atlas({
       .map((entry) => entry.item);
   }, [selected, index]);
 
+  const { hadUrlState } = useAtlasUrl({
+    controller,
+    viewport: lodViewport,
+    selectedId,
+    onRestoreSelection: setSelectedId,
+  });
+
+  /**
+   * 검색 결과로 이동.
+   *
+   * 항목 객체가 아니라 **위치**만 받는다. 고른 항목이 아직 받지 않은 청크에
+   * 있을 수 있기 때문이다. 뷰포트가 그리로 가면 필요한 청크가 따라 로드되고,
+   * 선택은 id 로 걸어 두었으므로 저절로 맺힌다.
+   */
+  const navigateToHit = useCallback(
+    (hit: SearchHit) => {
+      setSelectedId(hit.id);
+      /**
+       * 창 폭은 시점의 크기에 비례시킨다. 1969년에 20년 창은 맥락이 되지만,
+       * 136억 년 전에 20년 창은 아무것도 담기지 않은 빈 화면이다.
+       */
+      const span = Math.max(20, Math.abs(hit.start) * 2e-5);
+      controller.animateTo({ center: hit.start, span }, 620);
+    },
+    [controller],
+  );
+
+  // ⌘K · Ctrl+K · `/` — 어디에 포커스가 있든 열린다.
+  useEffect(() => {
+    if (!loadSearchIndex) return;
+    const onKey = (event: KeyboardEvent) => {
+      const typing =
+        event.target instanceof HTMLElement &&
+        (event.target.tagName === "INPUT" || event.target.isContentEditable);
+      const combo = (event.metaKey || event.ctrlKey) && event.key === "k";
+      if (combo || (event.key === "/" && !typing)) {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [loadSearchIndex]);
+
   const showAll = useCallback(() => {
-    setSelected(null);
+    setSelectedId(null);
     controller.animateTo(viewportForRange(UNIVERSE_START, PRESENT_EPOCH, 0.02), 1100);
   }, [controller]);
 
   const resetView = useCallback(() => {
-    setSelected(null);
+    setSelectedId(null);
     controller.animateTo(domain.defaultViewport, 700);
   }, [controller, domain.defaultViewport]);
 
@@ -331,7 +432,7 @@ export function Atlas({
         ref={setPlotEl}
         tabIndex={0}
         role="application"
-        aria-label="시간 지형. 드래그로 이동, 휠로 확대·축소."
+        aria-label="시간 지형. 좌우 화살표로 이동, +/- 로 확대·축소, Tab 으로 주요 사건 사이 이동."
         className="absolute inset-0 cursor-grab outline-none data-[dragging]:cursor-grabbing"
         style={{ paddingBottom: HORIZON_PX }}
       >
@@ -358,12 +459,24 @@ export function Atlas({
               labeledIds={lod.labeledIds}
               width={size.width}
               height={plotHeight}
-              selectedId={selected?.id ?? null}
+              selectedId={selectedId}
               onSelect={focusItem}
             />
           </>
         )}
       </div>
+
+      {/*
+        스크린리더용 위치 안내.
+        시각 사용자는 지형과 리드아웃으로 자기 위치를 안다. 그 정보가
+        보이지 않는 사용자에게도 있어야 한다. 뷰포트가 **확정**될 때만
+        갱신되므로(60fps 가 아니다) 읽어주기가 밀리지 않는다.
+      */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {lodViewport
+          ? `${formatTimePoint(lodViewport.center)} 부근, 폭 ${formatDuration(lodViewport.span)}, 사건 ${lod.peaks.length}개`
+          : ""}
+      </p>
 
       {/* 크롬은 최소한만. 화면의 주인공은 시간이다 */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-5 py-4">
@@ -373,6 +486,19 @@ export function Atlas({
         <span className="text-[11px] text-muted/70">{domain.label}</span>
         <div className="pointer-events-auto ml-auto flex items-center gap-2">
           <TierBadge controller={controller} />
+          {loadSearchIndex && (
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-keyshortcuts="Meta+K Control+K"
+              className="flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted transition-colors hover:border-border hover:text-foreground"
+            >
+              검색
+              <kbd className="tabular rounded border border-border/50 px-1 text-[10px] text-muted/70">
+                ⌘K
+              </kbd>
+            </button>
+          )}
           <button
             type="button"
             onClick={resetView}
@@ -390,14 +516,23 @@ export function Atlas({
         </div>
       </header>
 
-      {size.width > 0 && (
+      {/* 딥링크로 들어왔는데 인트로가 도는 것은 결함이다. */}
+      {size.width > 0 && !hadUrlState && (
         <ColdOpen controller={controller} target={domain.defaultViewport} />
+      )}
+
+      {loadSearchIndex && paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          loadIndex={loadSearchIndex}
+          onNavigate={navigateToHit}
+        />
       )}
 
       <DetailPanel
         item={selected}
         related={related}
-        onClose={() => setSelected(null)}
+        onClose={() => setSelectedId(null)}
         onNavigate={focusItem}
       />
 

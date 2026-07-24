@@ -14,7 +14,11 @@
 import chunkManifest from "./data/chunks.json";
 import overviewData from "./data/overview.json";
 import { visibleSignificanceRange } from "@/engine/time/significance";
+import type { SearchRecord } from "@/engine/index/search";
 import type { ChunkManifest, TimelineItem, Viewport } from "@/engine/types/timeline";
+
+/** 정적 산출물이 놓인 경로. 청크 매니페스트의 `path` 와 같은 뿌리다. */
+const CHUNK_BASE = "/data/history";
 
 /**
  * JSON 모듈은 문자열 리터럴을 넓은 타입으로 추론하므로 단언이 필요하다.
@@ -64,6 +68,30 @@ export function chunksForViewport(
  */
 const chunkCache = new Map<string, TimelineItem[]>();
 const inflight = new Map<string, Promise<TimelineItem[]>>();
+
+/**
+ * 검색 색인 — 전 항목의 최소 레코드.
+ *
+ * 번들에 넣지 않는다. 수백 KB 이고 대부분의 방문자는 검색을 쓰지 않는다.
+ * ⌘K 를 처음 여는 순간 한 번 받고, 이후에는 이 프로미스가 답한다.
+ */
+let searchIndexRequest: Promise<readonly SearchRecord[]> | null = null;
+
+export function loadSearchIndex(): Promise<readonly SearchRecord[]> {
+  searchIndexRequest ??= fetch(`${CHUNK_BASE}/search.json`)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`검색 색인 로드 실패: HTTP ${response.status}`);
+      }
+      return response.json() as Promise<SearchRecord[]>;
+    })
+    .catch((error: unknown) => {
+      // 실패를 캐시하면 영영 재시도하지 못한다.
+      searchIndexRequest = null;
+      throw error;
+    });
+  return searchIndexRequest;
+}
 
 export async function loadChunk(manifest: ChunkManifest): Promise<TimelineItem[]> {
   const cached = chunkCache.get(manifest.id);

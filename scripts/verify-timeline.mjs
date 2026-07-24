@@ -46,13 +46,19 @@ page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
  */
 const chunkRequests = new Set();
 let overviewRequested = false;
+/** 검색 색인이 **언제** 요청됐는지 — 번들이 아니라 지연 로드임을 확인한다. */
+let searchIndexRequestedAt = null;
 page.on("request", (r) => {
   const m = /\/data\/history\/(history-\d+)\.json/.exec(r.url());
   if (m) chunkRequests.add(m[1]);
   if (r.url().includes("overview.json")) overviewRequested = true;
+  if (r.url().includes("search.json") && searchIndexRequestedAt === null) {
+    searchIndexRequestedAt = Date.now();
+  }
 });
 
 await page.goto(URL, { waitUntil: "networkidle" });
+const firstPaintAt = Date.now();
 await page.waitForTimeout(400);
 
 /**
@@ -297,6 +303,144 @@ check(
 check("청크 로딩 중 콘솔 에러 없음", consoleErrors.length === 0);
 
 log(`\n지연 로드된 detail 청크: ${chunkRequests.size}개`);
+
+// ── 8. 검색 (Phase 4) ───────────────────────────────────────────
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.getByRole("button", { name: "인류사" }).click();
+await page.waitForTimeout(1200);
+
+await page.keyboard.press("Meta+k");
+await page.waitForTimeout(150);
+const palette = page.getByTestId("command-palette");
+check("⌘K 로 검색이 열린다", await palette.isVisible());
+
+/**
+ * 색인은 지연 로드된다 — 열기 전에는 네트워크에 없어야 한다.
+ * 번들에 넣으면 검색을 쓰지 않는 대다수가 수백 KB 를 헛되이 받는다.
+ */
+check(
+  "검색 색인은 열 때 받는다 (번들 아님)",
+  searchIndexRequestedAt !== null && searchIndexRequestedAt > firstPaintAt,
+);
+
+await page.keyboard.type("전투");
+await page.waitForTimeout(400);
+const results = page.locator('#command-palette-results [role="option"]');
+const resultCount = await results.count();
+check("검색 결과가 나온다", resultCount > 0, `${resultCount}건`);
+
+const firstResultTitle = await results.first().textContent();
+await results.first().click();
+await page.waitForTimeout(900);
+check("결과를 고르면 검색창이 닫힌다", !(await palette.isVisible()));
+check(
+  "고른 사건의 상세가 열린다",
+  await page.getByTestId("detail-panel").isVisible(),
+  firstResultTitle?.trim().slice(0, 20),
+);
+
+// ── 9. URL 딥링크 (Phase 4) ─────────────────────────────────────
+const deepLink = page.url();
+check("URL 에 뷰포트가 기록된다", /[?&]t=/.test(deepLink) && /[?&]s=/.test(deepLink));
+check("URL 에 선택이 기록된다", /[?&]i=/.test(deepLink));
+
+const centerBefore = await centerOf();
+
+/**
+ * 딥링크의 값어치는 "같은 화면이 다시 열리는가" 하나다.
+ * 새 페이지로 열어 확인한다 — 같은 탭에서 재사용하면 살아 있는 상태가
+ * 결과를 가려버린다.
+ */
+const restored = await browser.newPage({
+  viewport: { width: 1440, height: 900 },
+  colorScheme: "dark",
+});
+await restored.goto(deepLink, { waitUntil: "networkidle" });
+await restored.waitForTimeout(900);
+
+check(
+  "딥링크로 들어오면 콜드 오픈을 건너뛴다",
+  !(await restored.getByTestId("cold-open").isVisible()),
+);
+const centerAfter =
+  (await restored.getByTestId("tier-badge").textContent())?.split("·")[1]?.trim() ??
+  "";
+check("딥링크가 같은 시점을 복원한다", centerAfter === centerBefore,
+  `${centerBefore} → ${centerAfter}`);
+check(
+  "딥링크가 선택까지 복원한다",
+  await restored.getByTestId("detail-panel").isVisible(),
+);
+await restored.screenshot({ path: `${OUT}/r6-deeplink.png` });
+await restored.close();
+
+// ── 10. 키보드 · 스크린리더 (Phase 4) ───────────────────────────
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
+const tabStops = await page.evaluate(() => {
+  const all = document.querySelectorAll("svg g[data-start]");
+  const focusable = document.querySelectorAll("svg g[data-start][tabindex]");
+  const labelled = [...all].filter((g) => g.querySelector("text"));
+  const hidden = document.querySelectorAll(
+    'svg g[data-start][aria-hidden="true"]',
+  );
+  return {
+    all: all.length,
+    focusable: focusable.length,
+    labelled: labelled.length,
+    hidden: hidden.length,
+  };
+});
+
+/**
+ * 키보드로 닿는 것과 화면에 이름이 보이는 것이 **정확히 일치**해야 한다.
+ *
+ * 적으면 보이는데 못 가는 사건이 생기고, 많으면 이름 없는 점 사이를
+ * 수백 번 지나야 한다. 티어가 라벨 수에 상한(최대 40)을 두므로
+ * 탭 정지 수도 저절로 유계다 — 별도의 임의 임계값이 필요 없다.
+ */
+check(
+  "키보드가 닿는 곳 = 이름이 보이는 곳",
+  tabStops.focusable === tabStops.labelled && tabStops.focusable > 0,
+  `탭 ${tabStops.focusable} / 라벨 ${tabStops.labelled} / 전체 ${tabStops.all}`,
+);
+check(
+  "이름 없는 봉우리는 스크린리더에서 숨긴다",
+  tabStops.hidden === tabStops.all - tabStops.labelled,
+  `${tabStops.hidden}개 숨김`,
+);
+
+const labelled = await page.evaluate(() => {
+  const el = document.querySelector("svg g[data-start][tabindex]");
+  return el?.getAttribute("aria-label") ?? null;
+});
+check(
+  "봉우리가 이름과 시각을 함께 읽어준다",
+  Boolean(labelled && /\d/.test(labelled)),
+  labelled ?? "",
+);
+
+await page.evaluate(() => {
+  document.querySelector("svg g[data-start][tabindex]")?.focus();
+});
+await page.keyboard.press("Enter");
+await page.waitForTimeout(400);
+check(
+  "봉우리에서 Enter 로 선택된다",
+  await page.getByTestId("detail-panel").isVisible(),
+);
+
+const liveRegion = await page.locator('[role="status"][aria-live]').textContent();
+check(
+  "현재 위치를 스크린리더에 알린다",
+  Boolean(liveRegion && liveRegion.trim().length > 0),
+  liveRegion?.trim().slice(0, 40),
+);
+
+check("Phase 4 조작 중 콘솔 에러 없음", consoleErrors.length === 0,
+  consoleErrors.slice(0, 2).join(" | "));
 
 await browser.close();
 log(`\n스크린샷: ${OUT}`);

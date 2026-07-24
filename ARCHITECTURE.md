@@ -55,11 +55,12 @@ src/
       IntervalIndex.ts   ✅       # 범위 질의 O(log n + k)
       lod.ts             ✅       # (뷰포트, 픽셀폭) → 표시할 아이템 선별
       collision.ts       ✅       # 구간 분할 — 겹치는 항목을 여러 줄로
+      search.ts          ✅       # 제목 검색 랭킹 (순수)
     viewport/
       ViewportController.ts ✅    # {center, span} 명령형 소유 + rAF 이징
       useViewport.ts     ✅       # React 구독 바인딩
       inertia.ts         ✅       # 던지기 관성 · 러버밴딩 · 스프링
-      urlState.ts        ⬜ P4    # 뷰포트 ↔ URL 직렬화
+      urlState.ts        ✅       # 뷰포트 ↔ URL 직렬화 (ADR-017)
     types/
       timeline.ts        ✅       # TimelineItem, Lane, Category, Domain, Viewport
   domains/
@@ -69,7 +70,9 @@ src/
   components/atlas/      ✅       # Atlas · TerrainLayer(Canvas) · PeakLayer
                                 # EraLayer · Horizon · DetailPanel · Overlays
       ChunkedAtlas.tsx   ✅       # 청크 지연 로딩 껍데기 (도메인 무관)
-  stores/                ⬜ P4    # Zustand — 저빈도 상태만
+      CommandPalette.tsx ✅       # ⌘K 검색
+      useAtlasUrl.ts     ✅       # URL ↔ 뷰포트·선택 배선
+  stores/                ❌       # 만들지 않았다 — 아래 참조
   app/                   ✅       # Next.js App Router — 합성 루트
 scripts/etl/             ✅       # queries · wikitime · normalize · score
                                 # enrich · chunk · report · deep-time
@@ -85,8 +88,12 @@ public/data/             ✅       # 커밋되는 정적 청크
 | 계층 | 내용 | 저장소 | 갱신 빈도 |
 |---|---|---|---|
 | **뷰포트** | `center`, `span` | ref + 명령형 emitter | 60fps |
-| **선택/UI** | 선택 아이템, 패널, 필터 | Zustand | 저빈도 |
+| **선택/UI** | 선택 id, 패널, 검색창 | 컴포넌트 지역 상태 | 저빈도 |
 | **데이터** | overview(번들) + 로드된 청크 | 모듈 캐시 + `fetch` | 희소 |
+
+**Zustand 를 도입하지 않았다.** 계획에는 있었지만 Phase 4 까지 와도 전역으로 나눠야 할 상태가 없었다. 선택은 `Atlas` 가, 검색창은 `CommandPalette` 가, 로드된 청크는 로더의 모듈 캐시가 들고 있으면 충분하다. 해결할 문제가 없는 곳에 저장소 계층을 만드는 것은 간접층일 뿐이다. 여러 화면이 같은 상태를 공유하게 되면 재검토한다.
+
+**선택은 항목이 아니라 id 로 들고 있다.** 검색이나 딥링크로 **아직 받지 않은 청크**의 항목을 고를 수 있기 때문이다. id 로 두면 청크가 도착하는 순간 선택이 저절로 맺힌다.
 
 **뷰포트를 React state 에 넣으면 프로젝트가 죽는다.** 60fps 로 `setState` 하면 매 프레임 전체 재조정이 일어난다. `ViewportController` 가 값을 소유하고, rAF 루프에서 DOM 을 직접 갱신하거나 명시적으로 구독한 컴포넌트만 갱신한다.
 
