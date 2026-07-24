@@ -45,21 +45,21 @@ src/
       ticks.ts           ✅       # 17자릿수 대응 적응형 눈금
     index/
       IntervalIndex.ts   ✅       # 범위 질의 O(log n + k)
-      lod.ts             ⬜ P2    # (뷰포트, 픽셀폭) → 표시할 아이템 선별
-      collision.ts       ⬜ P2    # 라벨 충돌 회피
+      lod.ts             ✅       # (뷰포트, 픽셀폭) → 표시할 아이템 선별
+      collision.ts       ✅       # 구간 분할 — 겹치는 항목을 여러 줄로
     viewport/
-      ViewportController.ts ⬜ P2 # {center, span} 명령형 소유 + 관성/이징
-      useViewport.ts     ⬜ P2    # React 구독 바인딩
+      ViewportController.ts ✅    # {center, span} 명령형 소유 + rAF 이징
+      useViewport.ts     ✅       # React 구독 바인딩
       urlState.ts        ⬜ P4    # 뷰포트 ↔ URL 직렬화
     render/
-      Renderer.ts        ⬜ P2    # 공통 인터페이스 (Canvas 교체 지점)
-      SvgLayer.tsx       ⬜ P2
+      (Canvas 렌더러는 Phase 6 탈출구 — 지금은 필요 없다)
     types/
       timeline.ts        ✅       # TimelineItem, Lane, Category, Domain, Viewport
   domains/
-    history/             ⬜ P3    # manifest · lanes · categories
-  components/            ⬜ P2
-  stores/                ⬜ P2    # Zustand — 저빈도 상태만
+    history/             ✅       # manifest · lanes · categories · seed(195건)
+                                # Phase 3 의 ETL 이 seed 를 대체한다
+  components/timeline/   ✅       # Timeline · TimeAxis · useTimelineInput
+  stores/                ⬜ P4    # Zustand — 저빈도 상태만
   app/                   ✅       # Next.js App Router
 scripts/etl/             ⬜ P3
 public/data/             ⬜ P3    # 커밋되는 정적 산출물
@@ -89,7 +89,14 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 | 밀도 미니맵 | Canvas | 1회 렌더 후 재사용 |
 | Canvas 마크 레이어 | **만들지 않음** | Phase 6 탈출구 |
 
-**팬 최적화:** 팬 중에는 컨테이너의 `transform: translateX()` 만 변경한다 — 컴포지터가 처리하므로 React 리렌더 0회. 팬 종료 또는 임계 이동량 초과 시에만 재계산·재배치.
+**팬·줌 최적화 — 실제 구현:** 마크는 위치만 바뀌고 내용은 그대로이므로 React 를
+거치지 않는다. rAF 안에서 각 마크의 `style.transform` 을 직접 쓴다(수백 개라도
+1ms 미만이고 레이아웃을 유발하지 않는다). React 재렌더는 **LOD 선별 결과가
+바뀔 때만** 일어나며, 그 임계값은 폭 15% 변화 또는 중심 0.15 span 이동이다.
+오버스캔 500px 이 그사이의 가장자리 팝인을 막는다.
+
+시간축은 반대다 — 라벨 **내용 자체가** 바뀌므로 transform 으로 처리할 수 없어
+매 프레임 재렌더한다. 대신 개수가 10~20개라 비용이 무시할 만하다.
 
 ## 애니메이션 정책
 
@@ -112,10 +119,13 @@ public/data/             ⬜ P3    # 커밋되는 정적 산출물
 ## 검증
 
 ```bash
-npm run verify      # lint + typecheck + test
-npm run test:watch  # 시간 커널 개발 중
+npm run verify          # lint + typecheck + test
+npm run test:watch      # 시간 커널 개발 중
+
+npm run dev             # 터미널 1
+npm run verify:browser  # 터미널 2 — 브라우저 실측
 ```
 
 - **시간 커널** — `vitest`. 138억 년~하루 전 구간 왕복 변환, 눈금 불변식, 범위 질의를 참조 구현과 대조.
 - **엔진 경계** — ESLint. 위반 시 `npm run lint` 실패.
-- **성능 실측** — Playwright 로 팬/줌 프레임 측정 (Phase 2 부터). 로컬 도구로 [anthropics/skills](https://github.com/anthropics/skills) 의 `webapp-testing` 스킬을 쓰며, 타사 도구이므로 저장소에는 포함하지 않는다(`.gitignore`).
+- **성능 실측** — `npm run verify:browser` 가 Playwright 로 렌더·입력·프레임을 측정한다. 현재 60fps · 드롭 0%. 로컬 도구로 [anthropics/skills](https://github.com/anthropics/skills) 의 `webapp-testing` 스킬을 쓰며, 타사 도구이므로 저장소에는 포함하지 않는다(`.gitignore`).

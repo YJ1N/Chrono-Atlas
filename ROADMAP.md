@@ -45,15 +45,28 @@ Next.js 16 + TS + Tailwind 스캐폴딩, git 초기화, **ESLint 엔진 경계 �
 - 심원한 시간 확대 시 눈금 라벨 중복 → 단위를 **스텝 크기 기준**으로 선택 (ADR-011)
 - d3 의존성이 실제로는 전부 불필요함을 확인 (ADR-008)
 
-### ⬜ Phase 2 — 뷰포트 & 렌더 · **난이도 상**
+### ✅ Phase 2 — 뷰포트 & 렌더
 
-`ViewportController`(관성/이징) + SVG 레이어 + `lod.ts` + `collision.ts`.
+`ViewportController` + `lod.ts` + `collision.ts` + SVG 렌더 + 입력 처리.
+시드 데이터 195건(빅뱅~2022, primary 189 / context 6)으로 검증했다.
 
-제품의 "느낌"이 여기서 결정된다. 데모 임팩트의 90%.
+**브라우저 실측 결과** (`npm run verify:browser`, 1440×900):
+p50 프레임 간격 16.7ms = **60fps**, 드롭 0%, 최악 17.7ms.
+
+이 단계에서 발견해 해결한 것 — 모두 **브라우저 실측이 잡아냈고 단위 테스트로는
+잡히지 않았다**:
+
+- **마크를 클릭해도 선택되지 않던 버그.** `pointerdown` 에서 즉시
+  `setPointerCapture` 를 걸면 이후 `click` 이 원래 대상이 아니라 캡처한 요소로
+  전달된다. 임계값(4px)을 넘어 실제로 끌었을 때만 캡처하도록 고쳤다.
+- **시간축이 마크와 어긋남.** 축이 창 전체 폭 기준, 마크는 거터 이후 기준이었다.
+  축을 플롯과 같은 열에 넣어 좌표계를 통일했다.
+- **구간 막대와 라벨이 서로를 덮음.** 미뤄뒀던 `collision.ts`(구간 분할)를
+  구현해 레인별로 줄을 나눠 담는다.
+- **화면을 덮는 시대 리본의 이름이 안 보임.** 시작점이 화면 밖이면 라벨을
+  왼쪽 가장자리에 고정한다.
 
 - 의존: Phase 1
-- 검증: 하드코딩 시드 200건으로 먼저, 그다음 실데이터
-- 성능: `webapp-testing` 스킬(Playwright)로 팬/줌 프레임 실측 시작
 
 ### ⬜ Phase 3 — 데이터 파이프라인 · **난이도 중상**
 
@@ -61,7 +74,7 @@ Next.js 16 + TS + Tailwind 스캐폴딩, git 초기화, **ESLint 엔진 경계 �
 
 실데이터 규모에서만 LOD 의 진짜 문제가 드러난다.
 
-- 의존: Phase 1 타입 확정 (Phase 2 와 병렬 가능)
+- 의존: Phase 1 타입 확정. `domains/history/seed.ts` 를 ETL 산출물로 교체한다
 - 산출: `public/data/history/*.json` (커밋)
 - 검증 리포트 필수: 날짜 파싱 실패율, significance 분포, 레인별 건수
 
@@ -97,7 +110,7 @@ Next.js 16 + TS + Tailwind 스캐폴딩, git 초기화, **ESLint 엔진 경계 �
 | `Date` 사용으로 범위 붕괴 | 치명 | ✅ 해소 — `TimePoint = number` + ESLint 차단 |
 | 줌 배율 누적 정밀도 붕괴 | 높음 | ✅ 해소 — `{center, span}`, 200회 줌 테스트 |
 | 심원한 시간에서 픽셀 양자화 | 중간 | ✅ 해소 — 정밀도 하한 (ADR-006) |
-| 60fps 미달 | 높음 | ⬜ Phase 2 — 뷰포트를 React 밖에 + LOD 상한 + transform-only 팬 |
+| 60fps 미달 | 높음 | ✅ 해소 — 브라우저 실측 p50 16.7ms, 드롭 0% (`verify:browser`) |
 | 스코프 폭발 (8개 도메인 유혹) | 높음 | 🟡 완화 — MVP 는 history 1개, 경계는 ESLint 강제 |
 | `significance` 서구 편향 | 중간 | 🟡 문서화 — DATA_MODEL.md 명시, 향후 다중 신호 |
 | Wikidata 날짜 품질 불균일 | 중간 | ⬜ Phase 3 — `precision` 필드 + 검증 리포트 |

@@ -24,7 +24,7 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색한다. 역사는 첫 
 
 ## 현재 상태
 
-**Phase 0 (기반) 완료 · Phase 1 (시간 커널) 완료**
+**Phase 0 · 1 · 2 완료** — 138억 년을 60fps 로 탐색할 수 있는 상태
 
 | 모듈 | 상태 | 내용 |
 |---|---|---|
@@ -33,14 +33,22 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색한다. 역사는 첫 
 | `engine/time/TimeScale.ts` | ✅ | time ↔ pixel 매핑, 줌/팬 대수, 정밀도 하한 |
 | `engine/time/ticks.ts` | ✅ | 17자릿수 대응 적응형 눈금 |
 | `engine/index/IntervalIndex.ts` | ✅ | 범위 질의 O(log n + k) |
+| `engine/index/lod.ts` | ✅ | 중요도 기반 선별 — DOM 노드 상한을 만든다 |
+| `engine/index/collision.ts` | ✅ | 구간 분할 — 겹치는 항목을 여러 줄로 |
+| `engine/viewport/ViewportController.ts` | ✅ | 뷰포트의 유일한 소유자 |
+| `components/timeline/` | ✅ | Timeline · TimeAxis · 입력 처리 |
+| `domains/history/` | ✅ | 시드 195건 (Phase 3 에서 ETL 로 교체) |
 
-**테스트 75개 통과.** 138억 년~하루 전 구간 왕복 변환, 5개 연도 전체 날짜 왕복, 2000개 혼합 구간에 대한 무작위 300회 참조 대조, 전 줌 범위 눈금 불변식 포함.
+**단위 테스트 137개 통과.** 138억 년~하루 전 구간 왕복 변환, 5개 연도 전체 날짜 왕복, 2000개 혼합 구간에 대한 무작위 300회 참조 대조, 전 줌 범위 눈금 불변식 포함.
+
+**브라우저 실측 통과.** p50 프레임 간격 16.7ms(60fps), 드롭 0%.
 
 **엔진 경계가 ESLint 로 강제된다.** 실제 위반 파일로 발동을 확인했다.
 
 ```bash
-npm run verify      # lint + typecheck + test
+npm run verify          # lint + typecheck + test
 npm run dev
+npm run verify:browser  # 브라우저 실측 (dev 서버 필요)
 ```
 
 ---
@@ -55,7 +63,7 @@ npm run dev
 | 스타일 | Tailwind CSS 4 | |
 | 상태 | Zustand 5 | 저빈도 상태만 (ARCHITECTURE.md) |
 | 애니메이션 | motion 12 | UI 트랜지션 전용 |
-| 테스트 | Vitest 4 | 시간 커널 검증 |
+| 테스트 | Vitest 4 · Playwright | 커널 단위 검증 + 브라우저 실측 |
 | 런타임 | Node 26 / npm 11 | |
 
 **의도적으로 넣지 않은 것**

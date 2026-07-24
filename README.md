@@ -25,19 +25,30 @@ Google Maps 에서 장소를 탐색하듯 시간을 탐색합니다. 138억 년�
 
 ## 현재 상태
 
-**Phase 1 (시간 커널) 완료** — 테스트 75개 통과
+**Phase 2 (뷰포트 & 렌더) 완료** — 단위 테스트 137개 + 브라우저 실측 통과
+
+138억 년부터 하루까지 연속으로 줌·팬하며 탐색할 수 있습니다.
+시드 데이터 195건(빅뱅~2022)으로 검증했습니다.
 
 | 모듈 | 내용 |
 |---|---|
-| `engine/types/timeline.ts` | 코어 타입 (도메인 무관) |
 | `engine/time/TimePoint.ts` | 연도 ↔ 달력 ↔ 표시 변환, proleptic Gregorian |
 | `engine/time/TimeScale.ts` | time ↔ pixel 매핑, 줌/팬 대수, 정밀도 하한 |
 | `engine/time/ticks.ts` | 17자릿수 대응 적응형 눈금 |
 | `engine/index/IntervalIndex.ts` | 범위 질의 O(log n + k) |
+| `engine/index/lod.ts` | 중요도 기반 선별 — 이 제품의 심장 |
+| `engine/index/collision.ts` | 구간 분할 — 겹치는 항목을 여러 줄로 |
+| `engine/viewport/ViewportController.ts` | 뷰포트의 유일한 소유자 (React state 아님) |
 
-검증 범위: 138억 년~하루 전 구간 왕복 변환, 5개 연도 전체 날짜 왕복(윤년 포함), 2000개 혼합 구간에 대한 무작위 300회 참조 구현 대조, 전 줌 범위 눈금 불변식.
+**브라우저 실측** (1440×900, 연속 팬·줌 부하):
+p50 프레임 간격 **16.7ms = 60fps**, 드롭 프레임 **0%**, 최악 17.7ms.
 
-다음은 Phase 2 (뷰포트 & 렌더). [ROADMAP.md](ROADMAP.md)
+> 성능은 주장하지 않고 측정합니다. `npm run verify:browser` 가 Playwright 로
+> 렌더·입력·프레임을 실제로 잽니다. 이 검증이 단위 테스트로는 잡히지 않는
+> 버그를 잡았습니다 — `pointerdown` 에서 즉시 포인터 캡처를 걸면 이후 `click`
+> 이 캡처한 요소로 전달되어 **마크를 클릭해도 선택되지 않습니다.**
+
+다음은 Phase 3 (Wikidata ETL). [ROADMAP.md](ROADMAP.md)
 
 ---
 
@@ -61,12 +72,15 @@ engine/     ─▶ (아무것도 참조하지 않는다)
 
 ```bash
 npm install
-npm run dev        # 개발 서버
-npm run verify     # lint + typecheck + test
-npm run test:watch # 시간 커널 개발 중
+npm run dev             # 개발 서버
+npm run verify          # lint + typecheck + test
+npm run test:watch      # 시간 커널 개발 중
+
+# 브라우저 실측 (dev 서버가 떠 있어야 합니다)
+npm run verify:browser
 ```
 
-Node 26 / npm 11 · Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 5 strict · Tailwind CSS 4 · Zustand 5 · motion 12 · Vitest 4
+Node 26 / npm 11 · Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 5 strict · Tailwind CSS 4 · Zustand 5 · motion 12 · Vitest 4 · Playwright
 
 **의도적으로 넣지 않은 것**
 

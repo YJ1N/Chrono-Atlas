@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
+/**
+ * 색 토큰 — DESIGN_SYSTEM.md
+ *
+ * 데이터(`Category.colorToken`)는 색상값이 아니라 이 이름을 담는다.
+ * 색 리터럴이 데이터에 들어가면 테마와 대비를 한 곳에서 관리할 수 없다.
+ *
+ * 다크가 기본값이다. 심원한 시간을 다루는 제품의 톤에 맞고 마크의 채도가 산다.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #06070a;
+  --foreground: #e8eaf0;
+  --surface: #101218;
+  --surface-raised: #171a22;
+  --border: #232733;
+  --muted: #8b93a7;
+  --accent: #6ea8fe;
+
+  /* 카테고리 — 최대 8개. 그 이상은 사람이 색으로 구별하지 못한다. */
+  --category-cosmic: #8b7ff0;
+  --category-geology: #c98b52;
+  --category-biology: #4fb477;
+  --category-civilization: #d9a441;
+  --category-conflict: #d4636b;
+  --category-science: #4ea3c8;
+  --category-culture: #c471a8;
+
+  /**
+   * 봉우리의 기본색은 카테고리가 아니라 뼈색이다.
+   * 무지개 카테고리 팔레트를 전면에 쓰면 대시보드로 읽힌다 —
+   * 카테고리는 발광 후광에만 남기고, 마크 자체는 흰빛으로 통일한다.
+   */
+  --peak: #eef1f8;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #fbfbfd;
+    --foreground: #14161c;
+    --surface: #ffffff;
+    --surface-raised: #f3f4f8;
+    --border: #dfe2ea;
+    --muted: #616b80;
+    --accent: #2563eb;
+
+    --category-cosmic: #6b5dd3;
+    --category-geology: #a56a34;
+    --category-biology: #2f8f5b;
+    --category-civilization: #b3821f;
+    --category-conflict: #b8434c;
+    --category-science: #2b7fa3;
+    --category-culture: #a44d85;
+    --peak: #1a1d26;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  overscroll-behavior: none;
+}
+
+/**
+ * 축 눈금 숫자는 반드시 고정폭이어야 한다.
+ * 비례폭이면 팬 중에 "1,860 CE" → "1,870 CE" 로 바뀔 때 라벨 폭이 미세하게
+ * 달라져 눈금 전체가 떨린다. 60fps 를 달성해도 이것 하나로 싸구려처럼 보인다.
+ */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
